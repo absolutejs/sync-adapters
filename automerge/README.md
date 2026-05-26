@@ -1,0 +1,51 @@
+# @absolutejs/sync-automerge
+
+An [Automerge](https://automerge.org)-backed collaborative-text CRDT for
+[`@absolutejs/sync`](https://github.com/absolutejs/sync), behind the same
+`CrdtText` / `TextCrdtAdapter` contract as the core's zero-dependency `rgaText`
+and `@absolutejs/sync-yjs`.
+
+`@absolutejs/sync/crdt` ships a first-party RGA text CRDT that's great for
+offline-merge and moderate collaboration. Automerge is a mature, battle-tested
+CRDT library; this adapter lets you swap it in without touching your call sites.
+
+## Install
+
+```bash
+bun add @absolutejs/sync-automerge @automerge/automerge
+```
+
+`@absolutejs/sync` is a peer dependency. `@automerge/automerge` is a runtime
+dependency you install alongside.
+
+## Use
+
+```ts
+import { automergeText } from '@absolutejs/sync-automerge';
+// ...instead of: import { rgaText } from '@absolutejs/sync/crdt';
+
+// Server — declare the CRDT field with this backend
+engine.registerCrdt('doc', { state: automergeText });
+
+// Client — same hook, just pass the backend's factory
+const doc = useCollaborativeText({
+	collection: 'doc',
+	field: 'state',
+	id: 'shared',
+	url,
+	create: (replica) => createAutomergeText(replica)
+});
+```
+
+The serialized state is a base64 string of an Automerge document — JSON-safe for
+the sync engine's change feed. `merge` is commutative/associative/idempotent.
+
+## The contract
+
+Implements `TextCrdtAdapter<string>` from `@absolutejs/sync/crdt`: `create`,
+`merge`, `empty`, `textOf`. The `replica` argument is accepted for contract
+compatibility; Automerge manages actor identity internally.
+
+## License
+
+CC BY-NC 4.0

@@ -2,8 +2,10 @@
 	"name": "@absolutejs/sync-adapters",
 	"private": true,
 	"type": "module",
-	"description": "CRDT backend adapters for @absolutejs/sync (Yjs)",
+	"description": "CRDT backend adapters for @absolutejs/sync (Yjs, Automerge, Loro)",
 	"workspaces": [
+		"automerge",
+		"loro",
 		"yjs"
 	],
 	"scripts": {
