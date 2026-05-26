@@ -43,6 +43,36 @@ describe('Yjs collaborative text', () => {
 	});
 });
 
+describe('Yjs delta-state (takeDelta)', () => {
+	test('takeDelta carries the local edit and applies on a remote replica', () => {
+		const a = createYjsText('a');
+		a.setText('hello');
+		const b = createYjsText('b', a.state());
+
+		a.setText('hello world');
+		const delta = a.takeDelta!();
+		// Subsequent takes (no new edits) return an effectively empty update.
+		expect(a.takeDelta!().length).toBeLessThan(delta.length);
+
+		b.merge(delta);
+		expect(b.text()).toBe('hello world');
+	});
+
+	test('takeDelta excludes ops that arrived via merge (no re-broadcast)', () => {
+		const a = createYjsText('a');
+		a.setText('seed');
+		a.takeDelta!(); // flush the seed
+		const b = createYjsText('b');
+		b.setText('seed');
+
+		a.merge(b.state());
+		// Merge advanced the sync vector — a take right after returns nothing new.
+		const after = a.takeDelta!();
+		const empty = a.takeDelta!();
+		expect(after.length).toBe(empty.length);
+	});
+});
+
 describe('yjsText adapter', () => {
 	test('empty/textOf round-trip', () => {
 		expect(yjsText.textOf(yjsText.empty())).toBe('');

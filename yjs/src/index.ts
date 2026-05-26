@@ -105,11 +105,24 @@ export const createYjsText = (
 ): CrdtText<string> => {
 	const doc = docFrom(replica, initial);
 	const text = doc.getText(TEXT_KEY);
+	// State vector at the last sync point (a take or a merge). takeDelta encodes
+	// every update since this vector and then advances it; merge advances it too,
+	// so a remote op merged in isn't re-broadcast on the next take.
+	let lastVector = Y.encodeStateVector(doc);
 
 	return {
-		merge: (state) => apply(doc, state),
+		merge: (state) => {
+			apply(doc, state);
+			lastVector = Y.encodeStateVector(doc);
+		},
 		setText: (next) => doc.transact(() => reconcile(text, next)),
 		state: () => encode(doc),
+		takeDelta: () => {
+			const update = Y.encodeStateAsUpdate(doc, lastVector);
+			lastVector = Y.encodeStateVector(doc);
+
+			return toBase64(update);
+		},
 		text: () => text.toString()
 	};
 };
