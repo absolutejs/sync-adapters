@@ -2,9 +2,10 @@
 	"name": "@absolutejs/sync-adapters",
 	"private": true,
 	"type": "module",
-	"description": "CRDT backend adapters for @absolutejs/sync (Yjs, Automerge, Loro)",
+	"description": "Cluster bus + CRDT backend adapters for @absolutejs/sync (PG-NOTIFY bus, Yjs, Automerge, Loro)",
 	"workspaces": [
 		"automerge",
+		"bus-pg",
 		"loro",
 		"yjs"
 	],
