@@ -11,7 +11,7 @@
     },
     "automerge": {
       "name": "@absolutejs/sync-automerge",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@automerge/automerge": "^3.2.6",
       },
@@ -27,9 +27,9 @@
     },
     "bus-pg": {
       "name": "@absolutejs/sync-bus-pg",
-      "version": "0.0.1",
+      "version": "0.1.2",
       "devDependencies": {
-        "@absolutejs/sync": "^1.2.0",
+        "@absolutejs/sync": "^1.18.2",
         "@types/bun": "1.3.14",
         "postgres": "^3.4.9",
         "prettier": "3.5.3",
@@ -42,7 +42,7 @@
     },
     "loro": {
       "name": "@absolutejs/sync-loro",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "loro-crdt": "^1.12.2",
       },
@@ -56,9 +56,22 @@
         "@absolutejs/sync": ">= 0.10.0",
       },
     },
+    "redis": {
+      "name": "@absolutejs/sync-bus-redis",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@absolutejs/sync": "^1.21.0",
+        "@types/bun": "1.3.14",
+        "prettier": "3.5.3",
+        "typescript": "5.8.3",
+      },
+      "peerDependencies": {
+        "@absolutejs/sync": ">= 1.17.0",
+      },
+    },
     "yjs": {
       "name": "@absolutejs/sync-yjs",
-      "version": "0.0.2",
+      "version": "0.0.3",
       "dependencies": {
         "yjs": "^13.6.30",
       },
@@ -94,9 +107,13 @@
 
     "@absolutejs/sync-bus-pg": ["@absolutejs/sync-bus-pg@workspace:bus-pg"],
 
+    "@absolutejs/sync-bus-redis": ["@absolutejs/sync-bus-redis@workspace:redis"],
+
     "@absolutejs/sync-loro": ["@absolutejs/sync-loro@workspace:loro"],
 
     "@absolutejs/sync-yjs": ["@absolutejs/sync-yjs@workspace:yjs"],
+
+    "@absolutejs/telemetry": ["@absolutejs/telemetry@0.0.2", "", {}, "sha512-MwbcKNZaY8ByzZ7HKergCmGkc219A5cQfn0lyljmWMYxdXecuXp2I5JkCu28K52vgbC0z1b03grVNHQgBeg5sQ=="],
 
     "@automerge/automerge": ["@automerge/automerge@3.2.6", "", {}, "sha512-9/GXXfYYWNVGpnbRrGQzTNU4fWZ3XaEMeEg0OrpK4pvlQSpkmUBoirEb/4TMK6BwMysZGV5Yeneq3wwc7RNGfg=="],
 
@@ -164,7 +181,9 @@
 
     "zustand": ["zustand@5.0.13", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-efI2tVaVQPqtOh114loML/Z80Y4NP3yc+Ff0fYiZJPauNeWZeIp/bRFD7I9bfmCOYBh/PHxlglQ9+wvlwnPikQ=="],
 
-    "@absolutejs/sync-bus-pg/@absolutejs/sync": ["@absolutejs/sync@1.2.0", "", { "peerDependencies": { "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@angular/core", "@elysiajs/cron", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-HIXAhQDoQL8tPrfzA7v/P7Ttbf6NmpalcTEh4B4oNpqr9J3agoS8RNWLWNr12ErWTEeNGc+8cbFX3yhELMN42g=="],
+    "@absolutejs/sync-bus-pg/@absolutejs/sync": ["@absolutejs/sync@1.18.2", "", { "peerDependencies": { "@absolutejs/isolated-jsc": ">= 0.8.0", "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "@modelcontextprotocol/sdk": ">= 1.29.0", "@tanstack/db": ">= 0.6.7 <0.7", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-2v4e1RGcAHKp1fiXdEFli2H59B+j9G0Nl677T7ylz3bTdk1bxbaYDXFLa1GVM5cHVXmlts5RlkAnx8FqOtPprg=="],
+
+    "@absolutejs/sync-bus-redis/@absolutejs/sync": ["@absolutejs/sync@1.21.0", "", { "dependencies": { "@absolutejs/telemetry": "^0.0.2" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">= 0.8.0", "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "@modelcontextprotocol/sdk": ">= 1.29.0", "@tanstack/db": ">= 0.6.7 <0.7", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-64Hrigem61iFmrV2NK01cJEJYxv+coh8sEnCRwx9FMNA4BMXRTRJhSFl7sP2B9CKjK+baHjrOcw0D1WLldsJFg=="],
 
     "@absolutejs/sync-yjs/@absolutejs/sync": ["@absolutejs/sync@1.0.0", "", { "peerDependencies": { "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@angular/core", "@elysiajs/cron", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-1qpRBdru8GQ2L7P45O2NmQ3dHTChYgtE/NN9Ep+fDNdB+ycWqwkr+yXy8Wmk8gM9wjx26/n/XfskGiQqmkb9BA=="],
   }
