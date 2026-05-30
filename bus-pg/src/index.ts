@@ -10,15 +10,22 @@
  * and the notification carries a pointer (`{ spill: <row-id> }`) the receiver
  * uses to fetch + delete the row.
  *
+ * **Cross-instance resume (sync 1.17.0+):** the bus envelope carries
+ * `originVersion` end-to-end, so a client that reconnects to a DIFFERENT
+ * instance gets a catch-up diff from that instance's log of peer-broadcasted
+ * changes — no fresh snapshot, no sticky sessions required. Pair with a
+ * stable `SyncEngineOptions.instanceId` per shard so the resume cursor
+ * survives shard restarts.
+ *
  * Caveats inherited from the engine seam:
- *   - Per-instance version cursors. A client that reconnects to a *different*
- *     instance falls back to a fresh snapshot (no catch-up diff). Use sticky
- *     sessions if cross-instance resume matters.
  *   - Best-effort delivery. NOTIFY can be lost if the listener connection
  *     drops mid-stream; the spill table is durable but the inline path isn't.
  *     For at-most-once semantics that suffices (every instance also has its
  *     own change log for resume); for at-least-once cross-instance, run the
  *     bus with `spill: 'always'` (every message round-trips through the table).
+ *   - With sync < 1.17.0, `originVersion` is undefined on the wire — receiving
+ *     instances log peer changes at version 0, which means any cross-instance
+ *     resume falls back to a fresh snapshot. Bump to sync 1.17.0+ to enable.
  */
 import type {
 	ClusterBus,

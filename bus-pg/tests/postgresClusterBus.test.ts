@@ -14,9 +14,12 @@ import { createPostgresClusterBus } from '../src/index';
  * test-scoped channel, fire a mutation on engine A, assert engine B's
  * subscriber sees it.
  */
+// Default to a clean test DB without unrelated Postgres extensions / triggers.
+// Override with SYNC_BUS_PG_TEST_URL when pointing at your own instance.
+// Create with: docker exec sync-bench-pg psql -U postgres -c 'create database sync_bus_pg_tests'
 const PG_URL =
 	process.env.SYNC_BUS_PG_TEST_URL ??
-	'postgresql://postgres:postgres@localhost:54330/zbench';
+	'postgresql://postgres:postgres@localhost:54330/sync_bus_pg_tests';
 
 // Each engine in a test grabs a dedicated LISTEN connection that's held for
 // the test's lifetime. With 5 tests × up to 2 engines × (listen + query), the
@@ -26,13 +29,33 @@ afterAll(() => sql.end());
 
 type Task = { id: number; title: string };
 
-const itemsCollection = () =>
-	defineCollection<Task>({
-		name: 'tasks',
-		key: (task) => task.id,
-		hydrate: () => [],
-		match: () => true
+const wireEngine = () => {
+	const store = new Map<number, Task>();
+	const engine = createSyncEngine();
+	engine.registerReader('tasks', { all: () => [...store.values()] });
+	engine.registerWriter<Task>('tasks', {
+		delete: (row) => {
+			store.delete(row.id);
+		},
+		insert: (data) => {
+			store.set(data.id, data);
+			return data;
+		},
+		update: (data) => {
+			store.set(data.id, data);
+			return data;
+		}
 	});
+	engine.register(
+		defineCollection<Task>({
+			hydrate: () => [...store.values()],
+			key: (task) => task.id,
+			match: () => true,
+			name: 'tasks'
+		})
+	);
+	return { engine, store };
+};
 
 const collect = () => {
 	const diffs: ViewDiff<Task>[] = [];
@@ -54,10 +77,8 @@ describe('PostgresClusterBus — real PG LISTEN/NOTIFY end-to-end', () => {
 			.slice(2, 8)}`;
 		const bus = createPostgresClusterBus({ sql, channel });
 
-		const a = createSyncEngine();
-		const b = createSyncEngine();
-		a.register(itemsCollection());
-		b.register(itemsCollection());
+		const { engine: a } = wireEngine();
+		const { engine: b } = wireEngine();
 		for (const engine of [a, b]) {
 			engine.registerMutation(
 				defineMutation({
@@ -99,8 +120,7 @@ describe('PostgresClusterBus — real PG LISTEN/NOTIFY end-to-end', () => {
 			.toString(36)
 			.slice(2, 8)}`;
 		const bus = createPostgresClusterBus({ sql, channel });
-		const a = createSyncEngine();
-		a.register(itemsCollection());
+		const { engine: a } = wireEngine();
 		const disconnect = await a.connectCluster(bus);
 
 		const onA = collect();
@@ -130,10 +150,8 @@ describe('PostgresClusterBus — real PG LISTEN/NOTIFY end-to-end', () => {
 			.toString(36)
 			.slice(2, 8)}`;
 		const bus = createPostgresClusterBus({ sql, channel });
-		const a = createSyncEngine();
-		const b = createSyncEngine();
-		a.register(itemsCollection());
-		b.register(itemsCollection());
+		const { engine: a } = wireEngine();
+		const { engine: b } = wireEngine();
 		await a.connectCluster(bus);
 		const disconnectB = await b.connectCluster(bus);
 
@@ -168,8 +186,7 @@ describe('PostgresClusterBus — real PG LISTEN/NOTIFY end-to-end', () => {
 			.toString(36)
 			.slice(2, 8)}`;
 		const bus = createPostgresClusterBus({ sql, channel });
-		const a = createSyncEngine();
-		a.register(itemsCollection());
+		const { engine: a } = wireEngine();
 		await a.connectCluster(bus);
 
 		// Force a spill by emitting an oversized change.
@@ -193,10 +210,8 @@ describe('PostgresClusterBus — real PG LISTEN/NOTIFY end-to-end', () => {
 			.toString(36)
 			.slice(2, 8)}`;
 		const bus = createPostgresClusterBus({ sql, channel });
-		const a = createSyncEngine();
-		const b = createSyncEngine();
-		a.register(itemsCollection());
-		b.register(itemsCollection());
+		const { engine: a } = wireEngine();
+		const { engine: b } = wireEngine();
 		await a.connectCluster(bus);
 		const disconnectB = await b.connectCluster(bus);
 
