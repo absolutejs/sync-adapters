@@ -86,6 +86,42 @@ export type PostgresClusterBusOptions = {
 export type PostgresClusterBus = ClusterBus & {
 	/** Delete spill rows older than `olderThanMs` (default 60_000). */
 	vacuum: (olderThanMs?: number) => Promise<number>;
+	/**
+	 * Operator-shaped cumulative counters for the cluster-bus chokepoint.
+	 * Scrape on a 30s interval to attribute cross-instance fan-out cost
+	 * and detect a silently-broken cluster (received plateaus, errors
+	 * climb). Added in 0.1.2.
+	 */
+	metrics: () => PostgresClusterBusMetrics;
+};
+
+/**
+ * Cumulative counters since `createPostgresClusterBus()`. Added in 0.1.2.
+ *
+ * - `published` / `received` — envelopes the bus put on / pulled off the
+ *   channel. A receiver counts a message ONCE here, regardless of
+ *   whether it ignored it by origin downstream.
+ * - `publishedInline` / `publishedSpilled` — split of the `published`
+ *   total by envelope path; a healthy mostly-small workload has
+ *   `publishedSpilled` near zero.
+ * - `spillFetched` / `spillFetchFailed` — receiver side of the spill
+ *   path. `spillFetchFailed` climbing means a spill row was vacuumed
+ *   before every listener read it (vacuum window too aggressive).
+ * - `spillVacuumed` — rows pruned by `vacuum()` since start.
+ * - `publishErrors` / `subscribeErrors` — invocations that threw before
+ *   the message left / was delivered. `subscribeErrors` increments
+ *   when `onError` fires; `publishErrors` when `publish()` rejects.
+ */
+export type PostgresClusterBusMetrics = {
+	published: number;
+	publishedInline: number;
+	publishedSpilled: number;
+	received: number;
+	spillFetched: number;
+	spillFetchFailed: number;
+	spillVacuumed: number;
+	publishErrors: number;
+	subscribeErrors: number;
 };
 
 type Envelope =
@@ -112,8 +148,28 @@ export const createPostgresClusterBus = (
 ): PostgresClusterBus => {
 	const channel = options.channel ?? 'absolutejs_sync_cluster';
 	const spillMode = options.spill ?? 'overflow';
-	const onError = options.onError ?? ((error) => console.warn('[sync-bus-pg]', error));
+	const baseOnError =
+		options.onError ?? ((error) => console.warn('[sync-bus-pg]', error));
 	const { sql } = options;
+
+	// 0.1.2: cumulative operator counters. Single source of truth — both
+	// the publish and subscribe paths increment here; metrics() returns a
+	// shallow copy.
+	const counters: PostgresClusterBusMetrics = {
+		published: 0,
+		publishedInline: 0,
+		publishedSpilled: 0,
+		publishErrors: 0,
+		received: 0,
+		spillFetchFailed: 0,
+		spillFetched: 0,
+		spillVacuumed: 0,
+		subscribeErrors: 0
+	};
+	const onError = (error: unknown) => {
+		counters.subscribeErrors += 1;
+		baseOnError(error);
+	};
 
 	// Lazily ensure the spill table exists on first publish/subscribe that
 	// might need it. Concurrent calls are safe (`create table if not exists`).
@@ -126,42 +182,57 @@ export const createPostgresClusterBus = (
 	};
 
 	const publish = async (message: ClusterMessage): Promise<void> => {
-		const inline = JSON.stringify({
-			kind: 'inline',
-			message
-		} satisfies Envelope);
+		try {
+			const inline = JSON.stringify({
+				kind: 'inline',
+				message
+			} satisfies Envelope);
 
-		const useInline =
-			spillMode === 'never' ||
-			(spillMode === 'overflow' && inline.length <= INLINE_PAYLOAD_BUDGET);
+			const useInline =
+				spillMode === 'never' ||
+				(spillMode === 'overflow' &&
+					inline.length <= INLINE_PAYLOAD_BUDGET);
 
-		if (useInline) {
-			if (spillMode === 'never' && inline.length > INLINE_PAYLOAD_BUDGET) {
+			if (useInline) {
+				if (
+					spillMode === 'never' &&
+					inline.length > INLINE_PAYLOAD_BUDGET
+				) {
+					throw new Error(
+						`[sync-bus-pg] payload ${inline.length} bytes exceeds inline budget ${INLINE_PAYLOAD_BUDGET}; spill is 'never'`
+					);
+				}
+				// Wrap in pg_notify — payload is a single text arg.
+				await sql`select pg_notify(${channel}, ${inline})`;
+				counters.publishedInline += 1;
+				counters.published += 1;
+
+				return;
+			}
+
+			// Oversized inline OR spillMode === 'always': insert + notify the id.
+			// JSON-stringify + cast at the SQL boundary — `sql.json`'s JSONValue
+			// type is narrower than the structured `ClusterMessage` shape.
+			await ensureSpill();
+			const serialized = JSON.stringify(message);
+			const rows = await sql<{ id: string }[]>`
+				insert into sync_cluster_spill (message) values (${serialized}::jsonb)
+				returning id
+			`;
+			const id = rows[0]?.id;
+			if (id === undefined) {
 				throw new Error(
-					`[sync-bus-pg] payload ${inline.length} bytes exceeds inline budget ${INLINE_PAYLOAD_BUDGET}; spill is 'never'`
+					'[sync-bus-pg] spill insert returned no row id'
 				);
 			}
-			// Wrap in pg_notify — payload is a single text arg.
-			await sql`select pg_notify(${channel}, ${inline})`;
-
-			return;
+			const envelope: Envelope = { kind: 'spill', id };
+			await sql`select pg_notify(${channel}, ${JSON.stringify(envelope)})`;
+			counters.publishedSpilled += 1;
+			counters.published += 1;
+		} catch (error) {
+			counters.publishErrors += 1;
+			throw error;
 		}
-
-		// Oversized inline OR spillMode === 'always': insert + notify the id.
-		// JSON-stringify + cast at the SQL boundary — `sql.json`'s JSONValue
-		// type is narrower than the structured `ClusterMessage` shape.
-		await ensureSpill();
-		const serialized = JSON.stringify(message);
-		const rows = await sql<{ id: string }[]>`
-			insert into sync_cluster_spill (message) values (${serialized}::jsonb)
-			returning id
-		`;
-		const id = rows[0]?.id;
-		if (id === undefined) {
-			throw new Error('[sync-bus-pg] spill insert returned no row id');
-		}
-		const envelope: Envelope = { kind: 'spill', id };
-		await sql`select pg_notify(${channel}, ${JSON.stringify(envelope)})`;
 	};
 
 	const subscribe = async (
@@ -175,6 +246,7 @@ export const createPostgresClusterBus = (
 				try {
 					const envelope = JSON.parse(payload) as Envelope;
 					if (envelope.kind === 'inline') {
+						counters.received += 1;
 						onMessage(envelope.message);
 
 						return;
@@ -186,6 +258,7 @@ export const createPostgresClusterBus = (
 					`;
 					const row = rows[0];
 					if (row === undefined) {
+						counters.spillFetchFailed += 1;
 						onError(
 							new Error(
 								`[sync-bus-pg] spill row ${envelope.id} not found`
@@ -194,6 +267,8 @@ export const createPostgresClusterBus = (
 
 						return;
 					}
+					counters.spillFetched += 1;
+					counters.received += 1;
 					// postgres-js returns jsonb columns as text by default — only
 					// some configurations auto-parse to objects. Normalize both
 					// shapes so a future driver/version change can't break us
@@ -222,9 +297,12 @@ export const createPostgresClusterBus = (
 			where created_at < now() - (${olderThanMs} || ' milliseconds')::interval
 			returning id
 		`;
+		counters.spillVacuumed += result.length;
 
 		return result.length;
 	};
 
-	return { publish, subscribe, vacuum };
+	const metrics = (): PostgresClusterBusMetrics => ({ ...counters });
+
+	return { metrics, publish, subscribe, vacuum };
 };

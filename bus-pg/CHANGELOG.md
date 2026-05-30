@@ -5,6 +5,34 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This package is pre-1.0 — minor bumps may carry breaking changes; we'll call
 them out here.
 
+## [0.1.2] — 2026-05-29
+
+### Added — `bus.metrics()` for cluster-fan-out observability
+
+The cluster bus is the chokepoint for cross-instance fan-out, and operators
+were flying blind on it — a silently-broken cluster (channel dropped,
+spill rows being vacuumed faster than peers read them) showed no signal
+until cursor resumes started failing.
+
+`PostgresClusterBus.metrics()` returns cumulative `PostgresClusterBusMetrics`
+since `createPostgresClusterBus()`:
+
+- `published` / `publishedInline` / `publishedSpilled` — split of total
+  publishes by envelope path. Healthy mostly-small workloads keep
+  `publishedSpilled` near zero.
+- `received` — envelopes pulled off the channel (regardless of whether
+  downstream filtered by origin).
+- `spillFetched` / `spillFetchFailed` — receiver-side spill path. A
+  climbing `spillFetchFailed` means the `vacuum()` window is too
+  aggressive (rows pruned before every listener read them).
+- `spillVacuumed` — rows deleted by `vacuum()` since start.
+- `publishErrors` / `subscribeErrors` — throws on the publish path, and
+  `onError` fires on the subscribe path.
+
+8 new tests in `tests/metrics.test.ts` against a mock SQL tag-template.
+Real PG round-trips still covered by `postgresClusterBus.test.ts` +
+`crossInstanceResume.test.ts`. Test count: 12 → 20.
+
 ## [0.1.1] — 2026-05-29
 
 ### Fixed — spill-path jsonb decode + cross-instance resume integration
