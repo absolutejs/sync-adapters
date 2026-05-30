@@ -181,7 +181,7 @@ export const createPostgresClusterBus = (
 					}
 					// kind === 'spill' — fetch the row.
 					await ensureSpill();
-					const rows = await sql<{ message: ClusterMessage }[]>`
+					const rows = await sql<{ message: ClusterMessage | string }[]>`
 						select message from sync_cluster_spill where id = ${envelope.id}
 					`;
 					const row = rows[0];
@@ -194,7 +194,15 @@ export const createPostgresClusterBus = (
 
 						return;
 					}
-					onMessage(row.message);
+					// postgres-js returns jsonb columns as text by default — only
+					// some configurations auto-parse to objects. Normalize both
+					// shapes so a future driver/version change can't break us
+					// silently.
+					const parsed =
+						typeof row.message === 'string'
+							? (JSON.parse(row.message) as ClusterMessage)
+							: row.message;
+					onMessage(parsed);
 					// Intentionally NOT deleting here — see `vacuum()` below.
 				} catch (error) {
 					onError(error);

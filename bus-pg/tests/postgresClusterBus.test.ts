@@ -68,7 +68,10 @@ const collect = () => {
 	};
 };
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+// LISTEN/NOTIFY round-trip on a warm conn is under 10ms, but the test
+// container is shared with other suites and can spike past 100ms during
+// concurrent DDL. 250ms is a safe ceiling that still keeps the suite snappy.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 250));
 
 describe('PostgresClusterBus — real PG LISTEN/NOTIFY end-to-end', () => {
 	test('a mutation on engine A fans out to engine B over PG NOTIFY', async () => {
