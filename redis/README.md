@@ -5,6 +5,8 @@ Redis pub/sub `ClusterBus` for
 [`@absolutejs/sync-bus-pg`](../bus-pg) — same `ClusterBus` contract,
 different transport.
 
+**Docs:** [absolutejs.com/documentation/cluster-bus-overview#redis-adapter](https://absolutejs.com/documentation/cluster-bus-overview#redis-adapter)
+
 ## When to use Redis vs Postgres
 
 | Concern | `sync-bus-redis` | `sync-bus-pg` |
