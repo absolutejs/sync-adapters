@@ -7,6 +7,10 @@
 		"url": "https://github.com/absolutejs/sync-adapters.git",
 		"directory": "redis"
 	},
+	"homepage": "https://github.com/absolutejs/sync-adapters/tree/main/redis",
+	"bugs": {
+		"url": "https://github.com/absolutejs/sync-adapters/issues"
+	},
 	"main": "./dist/index.js",
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
