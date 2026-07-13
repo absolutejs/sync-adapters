@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-yjs",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"description": "Yjs-backed collaborative-text CRDT adapter for @absolutejs/sync",
 	"repository": {
 		"type": "git",

@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-automerge",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "Automerge-backed collaborative-text CRDT adapter for @absolutejs/sync",
 	"repository": {
 		"type": "git",

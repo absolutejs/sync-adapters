@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-loro",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "Loro-backed collaborative-text CRDT adapter for @absolutejs/sync",
 	"repository": {
 		"type": "git",
