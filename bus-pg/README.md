@@ -74,4 +74,4 @@ For workloads where messages stay small (the common case), the spill table never
 
 ## License
 
-CC BY-NC 4.0
+Apache License 2.0. See [LICENSE](./LICENSE).

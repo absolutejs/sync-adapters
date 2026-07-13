@@ -1,6 +1,7 @@
 {
 	"name": "@absolutejs/sync-adapters",
 	"private": true,
+	"license": "Apache-2.0",
 	"type": "module",
 	"description": "Cluster bus + CRDT backend adapters for @absolutejs/sync (PG-NOTIFY bus, Yjs, Automerge, Loro)",
 	"workspaces": [

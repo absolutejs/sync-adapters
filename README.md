@@ -41,4 +41,4 @@ bun run build        # across all adapters
 
 ## License
 
-CC BY-NC 4.0
+Apache License 2.0 — each published subpackage ships its own LICENSE.
