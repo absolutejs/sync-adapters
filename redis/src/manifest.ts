@@ -69,6 +69,27 @@ export const manifest = defineManifest<CreateRedisClusterBusOptions>()({
 					}
 				]
 			}
+		}),
+		defineImplementation<CreateRedisClusterBusOptions>()({
+			contract: 'messaging/channel-bus',
+			factory: 'createRedisChannelBus',
+			from: '@absolutejs/sync-bus-redis',
+			requires: {
+				services: [
+					{ description: 'At-most-once typed fan-out', id: 'redis' }
+				]
+			},
+			settings: Type.Object({ channel: Type.Optional(Type.String()) }),
+			title: 'Typed Redis channel bus (optional, at-most-once)',
+			wiring: {
+				code: 'createRedisChannelBus({ publisher: redisPublisher, subscriber: redisSubscriber, ...${settings} })',
+				imports: [
+					{
+						from: '@absolutejs/sync-bus-redis',
+						names: ['createRedisChannelBus']
+					}
+				]
+			}
 		})
 	],
 	settings: Type.Object({}),

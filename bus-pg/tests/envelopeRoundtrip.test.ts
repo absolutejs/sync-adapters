@@ -9,7 +9,10 @@
 
 import { describe, expect, test } from 'bun:test';
 import type { ClusterMessage } from '@absolutejs/sync/engine';
-import { createPostgresClusterBus } from '../src/index';
+import {
+	createPostgresChannelBus,
+	createPostgresClusterBus
+} from '../src/index';
 
 type Captured = { channel?: string; payload?: string };
 
@@ -108,5 +111,17 @@ describe('envelope roundtrip — originVersion (sync 1.17.0+)', () => {
 			originVersion: 1,
 		});
 		expect(captured.channel).toBe('demo:tenants');
+	});
+});
+
+describe('typed channel bus', () => {
+	test('round-trips a non-Sync payload without inventing row changes', async () => {
+		const captured: Captured = {};
+		const bus = createPostgresChannelBus<{ requestId: string }>({
+			sql: makeMockSql(captured)
+		});
+		await bus.publish({ requestId: 'elicit_123' });
+		const envelope = JSON.parse(captured.payload!);
+		expect(envelope.message).toEqual({ requestId: 'elicit_123' });
 	});
 });

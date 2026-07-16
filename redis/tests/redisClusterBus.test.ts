@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { ClusterMessage } from '@absolutejs/sync/engine';
 import {
 	createRedisClusterBus,
+	createRedisChannelBus,
 	type RedisPublisher,
 	type RedisSubscriber
 } from '../src/index';
@@ -55,6 +56,18 @@ const sampleMessage: ClusterMessage = {
 	origin: 'engine-A',
 	originVersion: 3
 };
+
+test('typed channel bus round-trips non-Sync payloads', async () => {
+	const mock = makeMockRedis();
+	const bus = createRedisChannelBus<{ requestId: string }>({
+		publisher: mock.publisher,
+		subscriber: mock.subscriber
+	});
+	const received: { requestId: string }[] = [];
+	await bus.subscribe((message) => received.push(message));
+	await bus.publish({ requestId: 'elicit_123' });
+	expect(received).toEqual([{ requestId: 'elicit_123' }]);
+});
 
 describe('createRedisClusterBus — publish / subscribe round-trip', () => {
 	test('a message published reaches the subscriber as a ClusterMessage', async () => {

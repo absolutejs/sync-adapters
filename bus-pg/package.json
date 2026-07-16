@@ -1,7 +1,7 @@
 {
 	"name": "@absolutejs/sync-bus-pg",
-	"version": "0.1.3",
-	"description": "Postgres LISTEN/NOTIFY cluster bus for @absolutejs/sync — horizontal scale across instances without standing up Redis",
+	"version": "0.2.0",
+	"description": "Typed Postgres LISTEN/NOTIFY channel and @absolutejs/sync cluster bus — horizontal scale without standing up Redis",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/absolutejs/sync-adapters.git",

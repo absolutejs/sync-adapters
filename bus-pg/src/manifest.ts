@@ -86,6 +86,36 @@ export const manifest = defineManifest<PostgresClusterBusOptions>()({
 					}
 				]
 			}
+		}),
+		defineImplementation<PostgresClusterBusOptions>()({
+			contract: 'messaging/channel-bus',
+			factory: 'createPostgresChannelBus',
+			from: '@absolutejs/sync-bus-pg',
+			requires: {
+				services: [
+					{ description: 'Typed process fan-out', id: 'postgres' }
+				]
+			},
+			settings: Type.Object({
+				channel: Type.Optional(Type.String()),
+				spill: Type.Optional(
+					Type.Union([
+						Type.Literal('overflow'),
+						Type.Literal('always'),
+						Type.Literal('never')
+					])
+				)
+			}),
+			title: 'Typed Postgres channel bus',
+			wiring: {
+				code: 'createPostgresChannelBus({ sql, ...${settings} })',
+				imports: [
+					{
+						from: '@absolutejs/sync-bus-pg',
+						names: ['createPostgresChannelBus']
+					}
+				]
+			}
 		})
 	],
 	settings: Type.Object({}),

@@ -123,9 +123,19 @@ export type RedisClusterBus = ClusterBus & {
 	metrics: () => RedisClusterBusMetrics;
 };
 
-export const createRedisClusterBus = (
+/** Payload-agnostic fan-out using the same Redis pub/sub transport. Messages
+ * are at-most-once; durable commands and effects belong in `@absolutejs/queue`. */
+export type RedisChannelBus<Message> = {
+	metrics: () => RedisClusterBusMetrics;
+	publish: (message: Message) => Promise<void>;
+	subscribe: (
+		onMessage: (message: Message) => void
+	) => Promise<() => Promise<void>>;
+};
+
+const createRedisBus = <Message>(
 	options: CreateRedisClusterBusOptions
-): RedisClusterBus => {
+): RedisChannelBus<Message> => {
 	const channel = options.channel ?? 'absolutejs_sync_cluster';
 	const onError =
 		options.onError ?? ((error) => console.warn('[sync-bus-redis]', error));
@@ -140,7 +150,7 @@ export const createRedisClusterBus = (
 
 	return {
 		metrics: () => ({ ...counters }),
-		publish: async (message: ClusterMessage): Promise<void> => {
+		publish: async (message: Message): Promise<void> => {
 			try {
 				const serialized = JSON.stringify(message);
 				const result = await options.publisher.publish(
@@ -157,11 +167,11 @@ export const createRedisClusterBus = (
 			}
 		},
 		subscribe: async (
-			onMessage: (message: ClusterMessage) => void
+			onMessage: (message: Message) => void
 		): Promise<() => Promise<void>> => {
 			const listener = (raw: string): void => {
 				try {
-					const parsed = JSON.parse(raw) as ClusterMessage;
+					const parsed = JSON.parse(raw) as Message;
 					counters.received += 1;
 					onMessage(parsed);
 				} catch (error) {
@@ -173,3 +183,11 @@ export const createRedisClusterBus = (
 		}
 	};
 };
+
+export const createRedisChannelBus = <Message>(
+	options: CreateRedisClusterBusOptions
+): RedisChannelBus<Message> => createRedisBus<Message>(options);
+
+export const createRedisClusterBus = (
+	options: CreateRedisClusterBusOptions
+): RedisClusterBus => createRedisBus<ClusterMessage>(options);

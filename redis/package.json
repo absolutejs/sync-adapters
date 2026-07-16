@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-bus-redis",
-	"version": "0.0.2",
+	"version": "0.1.0",
 	"description": "Redis pub/sub ClusterBus for @absolutejs/sync — cross-instance fan-out via PUBLISH/SUBSCRIBE. Sibling to @absolutejs/sync-bus-pg; faster fanout, better geo-replication story. Works with any Redis client (ioredis, node-redis, etc.) via a narrow tag-template interface.",
 	"repository": {
 		"type": "git",

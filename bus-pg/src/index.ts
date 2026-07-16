@@ -27,10 +27,7 @@
  *     instances log peer changes at version 0, which means any cross-instance
  *     resume falls back to a fresh snapshot. Bump to sync 1.17.0+ to enable.
  */
-import type {
-	ClusterBus,
-	ClusterMessage
-} from '@absolutejs/sync/engine';
+import type { ClusterBus, ClusterMessage } from '@absolutejs/sync/engine';
 import type { Sql } from 'postgres';
 
 /** Maximum bytes the inline NOTIFY payload may carry. Default is conservative;
@@ -124,9 +121,25 @@ export type PostgresClusterBusMetrics = {
 	subscribeErrors: number;
 };
 
-type Envelope =
-	| { kind: 'inline'; message: ClusterMessage }
+type Envelope<Message> =
+	| { kind: 'inline'; message: Message }
 	| { kind: 'spill'; id: string };
+
+/** A small, payload-agnostic process fan-out contract. Unlike Sync's
+ * `ClusterBus`, this does not pretend every message is a row change, so it can
+ * also carry MCP elicitation answers, cache invalidations, and control-plane
+ * signals. Delivery has the same semantics as this adapter's cluster bus. */
+export type ChannelBus<Message> = {
+	publish: (message: Message) => void | Promise<void>;
+	subscribe: (
+		onMessage: (message: Message) => void
+	) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
+};
+
+export type PostgresChannelBus<Message> = ChannelBus<Message> & {
+	metrics: () => PostgresClusterBusMetrics;
+	vacuum: (olderThanMs?: number) => Promise<number>;
+};
 
 /**
  * Build a {@link ClusterBus} that publishes via `pg_notify` and subscribes via
@@ -143,9 +156,9 @@ type Envelope =
  * await engine.connectCluster(bus);
  * ```
  */
-export const createPostgresClusterBus = (
+const createPostgresBus = <Message>(
 	options: PostgresClusterBusOptions
-): PostgresClusterBus => {
+): PostgresChannelBus<Message> => {
 	const channel = options.channel ?? 'absolutejs_sync_cluster';
 	const spillMode = options.spill ?? 'overflow';
 	const baseOnError =
@@ -181,12 +194,12 @@ export const createPostgresClusterBus = (
 		return spillReady;
 	};
 
-	const publish = async (message: ClusterMessage): Promise<void> => {
+	const publish = async (message: Message): Promise<void> => {
 		try {
 			const inline = JSON.stringify({
 				kind: 'inline',
 				message
-			} satisfies Envelope);
+			} satisfies Envelope<Message>);
 
 			const useInline =
 				spillMode === 'never' ||
@@ -225,7 +238,7 @@ export const createPostgresClusterBus = (
 					'[sync-bus-pg] spill insert returned no row id'
 				);
 			}
-			const envelope: Envelope = { kind: 'spill', id };
+			const envelope: Envelope<Message> = { kind: 'spill', id };
 			await sql`select pg_notify(${channel}, ${JSON.stringify(envelope)})`;
 			counters.publishedSpilled += 1;
 			counters.published += 1;
@@ -236,7 +249,7 @@ export const createPostgresClusterBus = (
 	};
 
 	const subscribe = async (
-		onMessage: (message: ClusterMessage) => void
+		onMessage: (message: Message) => void
 	): Promise<() => Promise<void>> => {
 		// `postgres`'s listen() opens a dedicated listener connection that
 		// invokes the callback per NOTIFY. It returns `{ unlisten }` so we
@@ -244,7 +257,7 @@ export const createPostgresClusterBus = (
 		const handle = await sql.listen(channel, (payload) => {
 			void (async () => {
 				try {
-					const envelope = JSON.parse(payload) as Envelope;
+					const envelope = JSON.parse(payload) as Envelope<Message>;
 					if (envelope.kind === 'inline') {
 						counters.received += 1;
 						onMessage(envelope.message);
@@ -253,7 +266,7 @@ export const createPostgresClusterBus = (
 					}
 					// kind === 'spill' — fetch the row.
 					await ensureSpill();
-					const rows = await sql<{ message: ClusterMessage | string }[]>`
+					const rows = await sql<{ message: Message | string }[]>`
 						select message from sync_cluster_spill where id = ${envelope.id}
 					`;
 					const row = rows[0];
@@ -275,7 +288,7 @@ export const createPostgresClusterBus = (
 					// silently.
 					const parsed =
 						typeof row.message === 'string'
-							? (JSON.parse(row.message) as ClusterMessage)
+							? (JSON.parse(row.message) as Message)
 							: row.message;
 					onMessage(parsed);
 					// Intentionally NOT deleting here — see `vacuum()` below.
@@ -306,3 +319,15 @@ export const createPostgresClusterBus = (
 
 	return { metrics, publish, subscribe, vacuum };
 };
+
+/** Create a typed Postgres LISTEN/NOTIFY channel without coupling the payload
+ * to `@absolutejs/sync` row-change messages. Use `spill: 'always'` when the
+ * database row must survive a transient listener disconnect; the notification
+ * is still a wake-up signal, so durable work belongs in `@absolutejs/queue`. */
+export const createPostgresChannelBus = <Message>(
+	options: PostgresClusterBusOptions
+): PostgresChannelBus<Message> => createPostgresBus<Message>(options);
+
+export const createPostgresClusterBus = (
+	options: PostgresClusterBusOptions
+): PostgresClusterBus => createPostgresBus<ClusterMessage>(options);
