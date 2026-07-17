@@ -14,7 +14,7 @@ import {
 	createPostgresClusterBus
 } from '../src/index';
 
-type Captured = { channel?: string; payload?: string };
+type Captured = { channel?: string; ddlCalls?: number; payload?: string };
 
 const makeMockSql = (captured: Captured) => {
 	// `postgres` exposes a tag-template + chained methods. For envelope-
@@ -31,10 +31,14 @@ const makeMockSql = (captured: Captured) => {
 
 	(sql as unknown as { listen: unknown }).listen = (
 		_channel: string,
-		_handler: (payload: string) => void,
+		_handler: (payload: string) => void
 	) => Promise.resolve({ unlisten: () => Promise.resolve() });
 
-	(sql as unknown as { unsafe: unknown }).unsafe = () => Promise.resolve([]);
+	(sql as unknown as { unsafe: unknown }).unsafe = () => {
+		captured.ddlCalls = (captured.ddlCalls ?? 0) + 1;
+
+		return Promise.resolve([]);
+	};
 
 	return sql;
 };
@@ -49,11 +53,11 @@ describe('envelope roundtrip — originVersion (sync 1.17.0+)', () => {
 			changes: [
 				{
 					change: { op: 'insert', row: { id: 1, title: 'x' } },
-					table: 'tasks',
-				},
+					table: 'tasks'
+				}
 			],
 			origin: 'engine-A',
-			originVersion: 42,
+			originVersion: 42
 		};
 
 		await bus.publish(message);
@@ -73,9 +77,9 @@ describe('envelope roundtrip — originVersion (sync 1.17.0+)', () => {
 
 		const message: ClusterMessage = {
 			changes: [
-				{ change: { op: 'insert', row: { id: 1 } }, table: 'tasks' },
+				{ change: { op: 'insert', row: { id: 1 } }, table: 'tasks' }
 			],
-			origin: 'engine-A',
+			origin: 'engine-A'
 			// originVersion intentionally omitted
 		};
 		await bus.publish(message);
@@ -93,7 +97,7 @@ describe('envelope roundtrip — originVersion (sync 1.17.0+)', () => {
 		await bus.publish({
 			changes: [],
 			origin: 'engine-A',
-			originVersion: 1,
+			originVersion: 1
 		});
 		expect(captured.channel).toBe('absolutejs_sync_cluster');
 	});
@@ -103,12 +107,12 @@ describe('envelope roundtrip — originVersion (sync 1.17.0+)', () => {
 		const sql = makeMockSql(captured);
 		const bus = createPostgresClusterBus({
 			channel: 'demo:tenants',
-			sql,
+			sql
 		});
 		await bus.publish({
 			changes: [],
 			origin: 'engine-A',
-			originVersion: 1,
+			originVersion: 1
 		});
 		expect(captured.channel).toBe('demo:tenants');
 	});
@@ -123,5 +127,16 @@ describe('typed channel bus', () => {
 		await bus.publish({ requestId: 'elicit_123' });
 		const envelope = JSON.parse(captured.payload!);
 		expect(envelope.message).toEqual({ requestId: 'elicit_123' });
+	});
+
+	test('keeps no-spill subscriptions DDL-free', async () => {
+		const captured: Captured = {};
+		const bus = createPostgresChannelBus<{ projectId: string }>({
+			spill: 'never',
+			sql: makeMockSql(captured)
+		});
+		const unsubscribe = await bus.subscribe(() => undefined);
+		expect(captured.ddlCalls).toBeUndefined();
+		await unsubscribe();
 	});
 });

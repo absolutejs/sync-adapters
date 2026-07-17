@@ -5,6 +5,11 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This package is pre-1.0 — minor bumps may carry breaking changes; we'll call
 them out here.
 
+## 0.2.1
+
+- Keep `spill: 'never'` subscriptions DDL-free; bounded channel buses now use
+  only their dedicated `LISTEN` connection and `pg_notify` calls.
+
 ## [0.1.2] — 2026-05-29
 
 ### Added — `bus.metrics()` for cluster-fan-out observability
@@ -68,7 +73,7 @@ The bus envelope already carried `origin` so peers ignore their own
 broadcasts. With `@absolutejs/sync` 1.17.0+, every broadcast also carries
 `originVersion` — the local version of the originating instance at the
 moment of broadcast. Receiving engines log peer changes against
-`(origin, originVersion)`, so a client that resumes against a *different*
+`(origin, originVersion)`, so a client that resumes against a _different_
 instance can be served a catch-up diff from that instance's own log of
 peer-broadcast changes. No sticky sessions required.
 

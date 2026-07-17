@@ -251,6 +251,10 @@ const createPostgresBus = <Message>(
 	const subscribe = async (
 		onMessage: (message: Message) => void
 	): Promise<() => Promise<void>> => {
+		// No-spill channels never query the spill table, so keep their startup
+		// DDL-free. Other modes prepare the table before LISTEN so the first
+		// oversized notification cannot race schema creation on a receiver.
+		if (spillMode !== 'never') await ensureSpill();
 		// `postgres`'s listen() opens a dedicated listener connection that
 		// invokes the callback per NOTIFY. It returns `{ unlisten }` so we
 		// can cleanly detach.

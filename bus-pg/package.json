@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-bus-pg",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Typed Postgres LISTEN/NOTIFY channel and @absolutejs/sync cluster bus — horizontal scale without standing up Redis",
 	"repository": {
 		"type": "git",
