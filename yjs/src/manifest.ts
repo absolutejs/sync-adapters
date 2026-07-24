@@ -4,7 +4,7 @@ import { Type } from '@sinclair/typebox';
 /* Adapter package: everything rides the `sync/crdt-adapter` implementation.
  * `yjsText` is a ready-made TextCrdtAdapter constant — no options, no env. */
 export const manifest = defineManifest<Record<never, never>>()({
-	contract: 1,
+	contract: 2,
 	identity: {
 		accent: '#8acb88',
 		category: 'sync',
@@ -22,9 +22,7 @@ export const manifest = defineManifest<Record<never, never>>()({
 			title: 'Yjs',
 			wiring: {
 				code: 'yjsText',
-				imports: [
-					{ from: '@absolutejs/sync-yjs', names: ['yjsText'] }
-				]
+				imports: [{ from: '@absolutejs/sync-yjs', names: ['yjsText'] }]
 			}
 		})
 	],

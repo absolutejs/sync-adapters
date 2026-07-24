@@ -7,7 +7,7 @@ import type { PostgresClusterBusOptions } from './index';
  * postgres.js only has a default export, which WiringImport can't express
  * (known v1 limitation), so the wiring documents the import instead. */
 export const manifest = defineManifest<PostgresClusterBusOptions>()({
-	contract: 1,
+	contract: 2,
 	identity: {
 		accent: '#336791',
 		category: 'sync',

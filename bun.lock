@@ -11,99 +11,99 @@
     },
     "automerge": {
       "name": "@absolutejs/sync-automerge",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "dependencies": {
-        "@absolutejs/manifest": "^0.1.0",
+        "@absolutejs/manifest": "^0.7.1",
         "@automerge/automerge": "^3.2.6",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
-        "@absolutejs/sync": "^0.15.0",
+        "@absolutejs/sync": "2.11.0",
         "@types/bun": "1.3.14",
         "prettier": "3.5.3",
         "typescript": "5.8.3",
       },
       "peerDependencies": {
-        "@absolutejs/sync": ">= 0.10.0",
+        "@absolutejs/sync": ">=2.11.0 <3",
       },
     },
     "bus-pg": {
       "name": "@absolutejs/sync-bus-pg",
-      "version": "0.1.2",
+      "version": "0.2.2",
       "dependencies": {
-        "@absolutejs/manifest": "^0.1.0",
+        "@absolutejs/manifest": "^0.7.1",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
-        "@absolutejs/sync": "^1.18.2",
+        "@absolutejs/sync": "2.11.0",
         "@types/bun": "1.3.14",
-        "postgres": "^3.4.9",
+        "postgres": "3.4.9",
         "prettier": "3.5.3",
         "typescript": "5.8.3",
       },
       "peerDependencies": {
-        "@absolutejs/sync": ">= 1.0.0",
-        "postgres": "^3.0.0",
+        "@absolutejs/sync": ">=2.11.0 <3",
+        "postgres": ">=3.4.9 <4",
       },
     },
     "loro": {
       "name": "@absolutejs/sync-loro",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "dependencies": {
-        "@absolutejs/manifest": "^0.1.0",
+        "@absolutejs/manifest": "^0.7.1",
         "@sinclair/typebox": "^0.34.0",
         "loro-crdt": "^1.12.2",
       },
       "devDependencies": {
-        "@absolutejs/sync": "^0.15.0",
+        "@absolutejs/sync": "2.11.0",
         "@types/bun": "1.3.14",
         "prettier": "3.5.3",
         "typescript": "5.8.3",
       },
       "peerDependencies": {
-        "@absolutejs/sync": ">= 0.10.0",
+        "@absolutejs/sync": ">=2.11.0 <3",
       },
     },
     "redis": {
       "name": "@absolutejs/sync-bus-redis",
-      "version": "0.0.1",
+      "version": "0.1.1",
       "dependencies": {
-        "@absolutejs/manifest": "^0.1.0",
+        "@absolutejs/manifest": "^0.7.1",
         "@sinclair/typebox": "^0.34.0",
       },
       "devDependencies": {
-        "@absolutejs/sync": "^1.21.0",
+        "@absolutejs/sync": "2.11.0",
         "@types/bun": "1.3.14",
         "prettier": "3.5.3",
         "typescript": "5.8.3",
       },
       "peerDependencies": {
-        "@absolutejs/sync": ">= 1.17.0",
+        "@absolutejs/sync": ">=2.11.0 <3",
       },
     },
     "yjs": {
       "name": "@absolutejs/sync-yjs",
-      "version": "0.0.3",
+      "version": "0.0.5",
       "dependencies": {
-        "@absolutejs/manifest": "^0.1.0",
+        "@absolutejs/manifest": "^0.7.1",
         "@sinclair/typebox": "^0.34.0",
         "yjs": "^13.6.30",
       },
       "devDependencies": {
-        "@absolutejs/sync": "^1.0.0",
+        "@absolutejs/sync": "2.11.0",
         "@types/bun": "1.3.14",
         "prettier": "3.5.3",
         "typescript": "5.8.3",
       },
       "peerDependencies": {
-        "@absolutejs/sync": ">= 0.10.0",
+        "@absolutejs/sync": ">=2.11.0 <3",
       },
     },
   },
   "packages": {
     "@absolutejs/absolute": ["@absolutejs/absolute@0.19.0-beta.1052", "", { "dependencies": { "@elysiajs/openapi": "^1.4.15", "@elysiajs/server-timing": "^1.4.0", "@elysiajs/static": "^1.4.0", "zustand": "^5.0.12" }, "optionalDependencies": { "@absolutejs/native-darwin-arm64": "0.19.0-beta.1008", "@absolutejs/native-darwin-x64": "0.19.0-beta.1008", "@absolutejs/native-linux-arm64": "0.19.0-beta.1008", "@absolutejs/native-linux-x64": "0.19.0-beta.1008", "@absolutejs/native-windows-arm64": "0.19.0-beta.1008", "@absolutejs/native-windows-x64": "0.19.0-beta.1008" }, "peerDependencies": { "@angular/animations": "^21.0.0", "@angular/common": "^21.0.0", "@angular/compiler": "^21.0.0", "@angular/compiler-cli": "^21.0.0", "@angular/core": "^21.0.0", "@angular/platform-browser": "^21.0.0", "@angular/platform-server": "^21.0.0", "@angular/router": "^21.0.0", "@angular/ssr": "^21.0.0", "@vue/compiler-sfc": "^3.5.27", "elysia": "^1.4.0", "less": "^4.6.0", "postcss": "^8.5.0", "react": "^19.2.0", "react-dom": "^19.2.0", "react-router": "^7.0.0", "rxjs": "^7.8.0", "sass": "^1.99.0", "sharp": ">=0.33.0", "stylus": "^0.64.0", "svelte": "^5.35.2", "tailwindcss": "^4.1.0", "typescript": "^5.9.3", "vue": "^3.5.27" }, "optionalPeers": ["@angular/animations", "@angular/common", "@angular/compiler", "@angular/compiler-cli", "@angular/core", "@angular/platform-browser", "@angular/platform-server", "@angular/router", "@angular/ssr", "@vue/compiler-sfc", "less", "postcss", "react", "react-dom", "react-router", "rxjs", "sass", "sharp", "stylus", "svelte", "tailwindcss", "typescript", "vue"], "bin": { "absolute": "dist/cli/index.js" } }, "sha512-zrdkLghuwfuFf9ZOrShogKdpKG4GqVlzeA6x8NcXbYfTZEbS/jTrCZ1Wx3OdlLgbQjfxypvqozyzXxG5OACBpA=="],
 
-    "@absolutejs/manifest": ["@absolutejs/manifest@0.1.0", "", { "peerDependencies": { "@sinclair/typebox": "^0.34.0" }, "bin": { "absolute-manifest": "dist/cli.js" } }, "sha512-Hf9mGkT42kwRCcEfXAG2sHzZwqlNpZH/Clsta/LJCxi1X/70tRp8n8O4EPlRvmM27VAiotDxpDbcx2IrG18XiQ=="],
+    "@absolutejs/manifest": ["@absolutejs/manifest@0.7.1", "", { "peerDependencies": { "@sinclair/typebox": ">=0.34.0 <0.35.0" }, "bin": { "absolute-manifest": "dist/cli.js" } }, "sha512-xlS8mbXvYk1k6ueI4aCflSqpSU78P0gEO56zc0kl/CVoa2iZ2qaTBONrhiaaM1aM+5zBbqlp5i8E4BiONhcKog=="],
 
     "@absolutejs/native-darwin-arm64": ["@absolutejs/native-darwin-arm64@0.19.0-beta.1008", "", { "os": "darwin", "cpu": "arm64" }, "sha512-bztRSnYXrD2O5UL9IUTP/Bc2Pd36sxmEd8elxjBPkgcB4iW9RmGUhCBGOMvGTKuEzHjWaJVVa1na6L9q12AxdA=="],
 
@@ -117,7 +117,7 @@
 
     "@absolutejs/native-windows-x64": ["@absolutejs/native-windows-x64@0.19.0-beta.1008", "", { "os": "win32", "cpu": "x64" }, "sha512-mXIL6AzV0gznwXz6gF+dtT4DIwxKMriF+WYxcjAPlf4xWD0S3ZS8jafHwQXi0RJn0pIX4TIIOhRz0JnVlka3zA=="],
 
-    "@absolutejs/sync": ["@absolutejs/sync@0.15.0", "", { "peerDependencies": { "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@angular/core", "@elysiajs/cron", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-P7guFky85BfRwYtqUSpygNWtyOrEDlQwFBaxUSKY3xTZGg/Xnr8Rv/ZdJ/qU2h1HmvshvInWwGXc3w9UaVHGJQ=="],
+    "@absolutejs/sync": ["@absolutejs/sync@2.11.0", "", { "dependencies": { "@absolutejs/manifest": "^0.7.1", "@absolutejs/telemetry": "^0.0.2", "@sinclair/typebox": "^0.34.0" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">=0.12.2 <0.13.0", "@angular/core": ">=21.2.18 <22", "@elysiajs/cron": ">=1.4.2 <2", "@modelcontextprotocol/sdk": ">=1.29.0 <2", "@tanstack/db": ">=0.6.16 <0.7", "drizzle-orm": ">=1.0.0-rc.4 <2", "elysia": ">=1.4.29 <2", "react": ">=19.2.8 <20", "svelte": ">=5.56.7 <6", "vue": ">=3.5.40 <4" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-cOyeM4Pdf7EqDOOhrHMIgklB5+8KJJoSQEbAbW0IpbVB0oc7Xvrz7uy2AGqKBW8MYxMbZf1QzaWYLrqef8mUVA=="],
 
     "@absolutejs/sync-automerge": ["@absolutejs/sync-automerge@workspace:automerge"],
 
@@ -196,11 +196,5 @@
     "yjs": ["yjs@13.6.30", "", { "dependencies": { "lib0": "^0.2.99" } }, "sha512-vv/9h42eCMC81ZHDFswuu/MKzkl/vyq1BhaNGfHyOonwlG4CJbQF4oiBBJPvfdeCt/PlVDWh7Nov9D34YY09uQ=="],
 
     "zustand": ["zustand@5.0.13", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-efI2tVaVQPqtOh114loML/Z80Y4NP3yc+Ff0fYiZJPauNeWZeIp/bRFD7I9bfmCOYBh/PHxlglQ9+wvlwnPikQ=="],
-
-    "@absolutejs/sync-bus-pg/@absolutejs/sync": ["@absolutejs/sync@1.21.0", "", { "dependencies": { "@absolutejs/telemetry": "^0.0.2" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">= 0.8.0", "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "@modelcontextprotocol/sdk": ">= 1.29.0", "@tanstack/db": ">= 0.6.7 <0.7", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-64Hrigem61iFmrV2NK01cJEJYxv+coh8sEnCRwx9FMNA4BMXRTRJhSFl7sP2B9CKjK+baHjrOcw0D1WLldsJFg=="],
-
-    "@absolutejs/sync-bus-redis/@absolutejs/sync": ["@absolutejs/sync@1.21.0", "", { "dependencies": { "@absolutejs/telemetry": "^0.0.2" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">= 0.8.0", "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "@modelcontextprotocol/sdk": ">= 1.29.0", "@tanstack/db": ">= 0.6.7 <0.7", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-64Hrigem61iFmrV2NK01cJEJYxv+coh8sEnCRwx9FMNA4BMXRTRJhSFl7sP2B9CKjK+baHjrOcw0D1WLldsJFg=="],
-
-    "@absolutejs/sync-yjs/@absolutejs/sync": ["@absolutejs/sync@1.21.0", "", { "dependencies": { "@absolutejs/telemetry": "^0.0.2" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">= 0.8.0", "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "@modelcontextprotocol/sdk": ">= 1.29.0", "@tanstack/db": ">= 0.6.7 <0.7", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-64Hrigem61iFmrV2NK01cJEJYxv+coh8sEnCRwx9FMNA4BMXRTRJhSFl7sP2B9CKjK+baHjrOcw0D1WLldsJFg=="],
   }
 }

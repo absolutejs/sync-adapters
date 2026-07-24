@@ -4,7 +4,7 @@ import { Type } from '@sinclair/typebox';
 /* Adapter package: everything rides the `sync/crdt-adapter` implementation.
  * `automergeText` is a ready-made TextCrdtAdapter constant — no options. */
 export const manifest = defineManifest<Record<never, never>>()({
-	contract: 1,
+	contract: 2,
 	identity: {
 		accent: '#e9445f',
 		category: 'sync',

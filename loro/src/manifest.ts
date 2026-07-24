@@ -4,7 +4,7 @@ import { Type } from '@sinclair/typebox';
 /* Adapter package: everything rides the `sync/crdt-adapter` implementation.
  * `loroText` is a ready-made TextCrdtAdapter constant — no options. */
 export const manifest = defineManifest<Record<never, never>>()({
-	contract: 1,
+	contract: 2,
 	identity: {
 		accent: '#4f8cc9',
 		category: 'sync',

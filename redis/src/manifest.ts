@@ -7,7 +7,7 @@ import type { CreateRedisClusterBusOptions } from './index';
  * the narrow RedisPublisher/RedisSubscriber contracts) → wiring TODO
  * bindings; only the channel name is serializable. */
 export const manifest = defineManifest<CreateRedisClusterBusOptions>()({
-	contract: 1,
+	contract: 2,
 	identity: {
 		accent: '#d82c20',
 		category: 'sync',
