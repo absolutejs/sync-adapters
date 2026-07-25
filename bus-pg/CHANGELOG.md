@@ -5,6 +5,18 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This package is pre-1.0 — minor bumps may carry breaking changes; we'll call
 them out here.
 
+## 0.2.3
+
+- Add `listenerHealth()` lifecycle snapshots with connection, reconnection,
+  self-probe, and timestamp state for the dedicated PostgreSQL listener.
+- Add `probeListener()` for an immediate end-to-end `pg_notify` → `LISTEN`
+  delivery check.
+- Monitor that delivery path by default every 15 seconds. A failed probe marks
+  the listener `reconnecting`; postgres.js's existing automatic resubscribe and
+  the next successful probe restore `connected` without app intervention.
+- Keep private probe envelopes out of application message counters and
+  callbacks.
+
 ## 0.2.1
 
 - Keep `spill: 'never'` subscriptions DDL-free; bounded channel buses now use

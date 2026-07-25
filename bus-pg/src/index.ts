@@ -27,6 +27,7 @@
  *     instances log peer changes at version 0, which means any cross-instance
  *     resume falls back to a fresh snapshot. Bump to sync 1.17.0+ to enable.
  */
+import { randomUUID } from 'node:crypto';
 import type { ClusterBus, ClusterMessage } from '@absolutejs/sync/engine';
 import type { Sql } from 'postgres';
 
@@ -34,6 +35,8 @@ import type { Sql } from 'postgres';
  * Postgres caps `NOTIFY` payloads at 8000 bytes (compile-time, MAX_NOTIFY_PAYLOAD).
  * We leave some headroom for the wrapper envelope. */
 const INLINE_PAYLOAD_BUDGET = 6000;
+const DEFAULT_LISTENER_PROBE_INTERVAL_MS = 15_000;
+const DEFAULT_LISTENER_PROBE_TIMEOUT_MS = 5_000;
 
 const SPILL_TABLE_DDL = `
 	create table if not exists sync_cluster_spill (
@@ -69,6 +72,45 @@ export type PostgresClusterBusOptions = {
 	 * spill row, etc). Defaults to `console.warn`.
 	 */
 	onError?: (error: unknown) => void;
+	/**
+	 * End-to-end listener monitoring. The bus periodically publishes a private
+	 * probe envelope and requires its own LISTEN callback to receive it. This
+	 * detects the gap that a successful query-pool check cannot: postgres.js is
+	 * reconnecting its dedicated listener connection but notifications are not
+	 * currently reaching this process.
+	 *
+	 * Enabled by default with a 15 second interval and 5 second timeout. Set to
+	 * `false` only when another owner calls `probeListener()` on its own cadence.
+	 */
+	listenerHealth?:
+		| false
+		| {
+				probeIntervalMs?: number;
+				probeTimeoutMs?: number;
+		  };
+};
+
+export type PostgresListenerState =
+	| 'connected'
+	| 'connecting'
+	| 'idle'
+	| 'reconnecting';
+
+/** A point-in-time view of the dedicated LISTEN connection's real delivery
+ * path. Timestamps are Unix milliseconds so metrics and JSON APIs can consume
+ * the shape without parsing package-formatted dates. */
+export type PostgresListenerHealth = {
+	activeSubscriptions: number;
+	connections: number;
+	lastConnectedAt: number | null;
+	lastProbeAttemptAt: number | null;
+	lastProbeFailedAt: number | null;
+	lastProbeSucceededAt: number | null;
+	probeAttempts: number;
+	probeFailures: number;
+	probeSuccesses: number;
+	reconnects: number;
+	state: PostgresListenerState;
 };
 
 /**
@@ -90,6 +132,11 @@ export type PostgresClusterBus = ClusterBus & {
 	 * climb). Added in 0.1.2.
 	 */
 	metrics: () => PostgresClusterBusMetrics;
+	listenerHealth: () => PostgresListenerHealth;
+	/** Immediately prove that this process can publish to and receive from its
+	 * dedicated LISTEN connection. Returns false when there is no subscription
+	 * or when the probe times out. */
+	probeListener: () => Promise<boolean>;
 };
 
 /**
@@ -123,6 +170,7 @@ export type PostgresClusterBusMetrics = {
 
 type Envelope<Message> =
 	| { kind: 'inline'; message: Message }
+	| { id: string; kind: 'listener-probe' }
 	| { kind: 'spill'; id: string };
 
 /** A small, payload-agnostic process fan-out contract. Unlike Sync's
@@ -137,7 +185,9 @@ export type ChannelBus<Message> = {
 };
 
 export type PostgresChannelBus<Message> = ChannelBus<Message> & {
+	listenerHealth: () => PostgresListenerHealth;
 	metrics: () => PostgresClusterBusMetrics;
+	probeListener: () => Promise<boolean>;
 	vacuum: (olderThanMs?: number) => Promise<number>;
 };
 
@@ -161,9 +211,45 @@ const createPostgresBus = <Message>(
 ): PostgresChannelBus<Message> => {
 	const channel = options.channel ?? 'absolutejs_sync_cluster';
 	const spillMode = options.spill ?? 'overflow';
+	const listenerHealthConfig =
+		options.listenerHealth === false
+			? null
+			: {
+					probeIntervalMs:
+						options.listenerHealth?.probeIntervalMs ??
+						DEFAULT_LISTENER_PROBE_INTERVAL_MS,
+					probeTimeoutMs:
+						options.listenerHealth?.probeTimeoutMs ??
+						DEFAULT_LISTENER_PROBE_TIMEOUT_MS
+				};
+	if (
+		listenerHealthConfig !== null &&
+		(listenerHealthConfig.probeIntervalMs <= 0 ||
+			listenerHealthConfig.probeTimeoutMs <= 0)
+	)
+		throw new Error(
+			'[sync-bus-pg] listener probe interval and timeout must be positive'
+		);
 	const baseOnError =
 		options.onError ?? ((error) => console.warn('[sync-bus-pg]', error));
 	const { sql } = options;
+	const listener: PostgresListenerHealth = {
+		activeSubscriptions: 0,
+		connections: 0,
+		lastConnectedAt: null,
+		lastProbeAttemptAt: null,
+		lastProbeFailedAt: null,
+		lastProbeSucceededAt: null,
+		probeAttempts: 0,
+		probeFailures: 0,
+		probeSuccesses: 0,
+		reconnects: 0,
+		state: 'idle'
+	};
+	const pendingProbes = new Map<string, (received: boolean) => void>();
+	let listenerFailureReported = false;
+	let listenerMonitor: ReturnType<typeof setInterval> | undefined;
+	let probeInFlight: Promise<boolean> | undefined;
 
 	// 0.1.2: cumulative operator counters. Single source of truth — both
 	// the publish and subscribe paths increment here; metrics() returns a
@@ -182,6 +268,98 @@ const createPostgresBus = <Message>(
 	const onError = (error: unknown) => {
 		counters.subscribeErrors += 1;
 		baseOnError(error);
+	};
+	const listenerHealth = (): PostgresListenerHealth => ({ ...listener });
+	const recordListenerConnected = (reconnected: boolean) => {
+		const now = Date.now();
+		listener.connections += 1;
+		listener.lastConnectedAt = now;
+		if (reconnected) listener.reconnects += 1;
+		listener.state = 'connected';
+		listenerFailureReported = false;
+	};
+	const recordProbeResult = (succeeded: boolean) => {
+		const now = Date.now();
+		if (succeeded) {
+			listener.lastProbeSucceededAt = now;
+			listener.probeSuccesses += 1;
+			listener.state = 'connected';
+			listenerFailureReported = false;
+
+			return;
+		}
+		listener.lastProbeFailedAt = now;
+		listener.probeFailures += 1;
+		listener.state = 'reconnecting';
+		if (!listenerFailureReported) {
+			listenerFailureReported = true;
+			onError(
+				new Error(
+					'[sync-bus-pg] listener self-probe timed out; postgres.js is reconnecting the dedicated LISTEN connection'
+				)
+			);
+		}
+	};
+	const runListenerProbe = async (): Promise<boolean> => {
+		if (listener.activeSubscriptions === 0) return false;
+		listener.lastProbeAttemptAt = Date.now();
+		listener.probeAttempts += 1;
+		const id = randomUUID();
+		let settle: ((received: boolean) => void) | undefined;
+		const received = new Promise<boolean>((resolve) => {
+			const timeout = setTimeout(() => {
+				pendingProbes.delete(id);
+				resolve(false);
+			}, listenerHealthConfig?.probeTimeoutMs ?? DEFAULT_LISTENER_PROBE_TIMEOUT_MS);
+			settle = (didReceive) => {
+				clearTimeout(timeout);
+				pendingProbes.delete(id);
+				resolve(didReceive);
+			};
+			pendingProbes.set(id, settle);
+		});
+		try {
+			const envelope: Envelope<Message> = {
+				id,
+				kind: 'listener-probe'
+			};
+			await sql`select pg_notify(${channel}, ${JSON.stringify(envelope)})`;
+		} catch (error) {
+			settle?.(false);
+			if (listener.activeSubscriptions > 0) {
+				recordProbeResult(false);
+				if (!listenerFailureReported) onError(error);
+			}
+
+			return false;
+		}
+		const succeeded = await received;
+		if (listener.activeSubscriptions > 0) recordProbeResult(succeeded);
+
+		return succeeded;
+	};
+	const probeListener = (): Promise<boolean> => {
+		if (probeInFlight !== undefined) return probeInFlight;
+		const probe = runListenerProbe().finally(() => {
+			if (probeInFlight === probe) probeInFlight = undefined;
+		});
+		probeInFlight = probe;
+
+		return probe;
+	};
+	const startListenerMonitor = () => {
+		if (listenerHealthConfig === null || listenerMonitor !== undefined)
+			return;
+		listenerMonitor = setInterval(() => {
+			void probeListener();
+		}, listenerHealthConfig.probeIntervalMs);
+		listenerMonitor.unref?.();
+	};
+	const stopListenerMonitor = () => {
+		if (listenerMonitor !== undefined) clearInterval(listenerMonitor);
+		listenerMonitor = undefined;
+		for (const settleProbe of pendingProbes.values()) settleProbe(false);
+		pendingProbes.clear();
 	};
 
 	// Lazily ensure the spill table exists on first publish/subscribe that
@@ -251,59 +429,107 @@ const createPostgresBus = <Message>(
 	const subscribe = async (
 		onMessage: (message: Message) => void
 	): Promise<() => Promise<void>> => {
+		listener.activeSubscriptions += 1;
+		listener.state = 'connecting';
+		let connectionConfirmations = 0;
 		// No-spill channels never query the spill table, so keep their startup
 		// DDL-free. Other modes prepare the table before LISTEN so the first
 		// oversized notification cannot race schema creation on a receiver.
-		if (spillMode !== 'never') await ensureSpill();
+		try {
+			if (spillMode !== 'never') await ensureSpill();
+		} catch (error) {
+			listener.activeSubscriptions -= 1;
+			listener.state =
+				listener.activeSubscriptions === 0 ? 'idle' : listener.state;
+			onError(error);
+			throw error;
+		}
 		// `postgres`'s listen() opens a dedicated listener connection that
 		// invokes the callback per NOTIFY. It returns `{ unlisten }` so we
 		// can cleanly detach.
-		const handle = await sql.listen(channel, (payload) => {
-			void (async () => {
-				try {
-					const envelope = JSON.parse(payload) as Envelope<Message>;
-					if (envelope.kind === 'inline') {
-						counters.received += 1;
-						onMessage(envelope.message);
+		let handle: Awaited<ReturnType<Sql['listen']>>;
+		try {
+			handle = await sql.listen(
+				channel,
+				(payload) => {
+					void (async () => {
+						try {
+							const envelope = JSON.parse(
+								payload
+							) as Envelope<Message>;
+							if (envelope.kind === 'listener-probe') {
+								pendingProbes.get(envelope.id)?.(true);
 
-						return;
-					}
-					// kind === 'spill' — fetch the row.
-					await ensureSpill();
-					const rows = await sql<{ message: Message | string }[]>`
+								return;
+							}
+							if (envelope.kind === 'inline') {
+								counters.received += 1;
+								onMessage(envelope.message);
+
+								return;
+							}
+							// kind === 'spill' — fetch the row.
+							await ensureSpill();
+							const rows = await sql<
+								{ message: Message | string }[]
+							>`
 						select message from sync_cluster_spill where id = ${envelope.id}
 					`;
-					const row = rows[0];
-					if (row === undefined) {
-						counters.spillFetchFailed += 1;
-						onError(
-							new Error(
-								`[sync-bus-pg] spill row ${envelope.id} not found`
-							)
-						);
+							const row = rows[0];
+							if (row === undefined) {
+								counters.spillFetchFailed += 1;
+								onError(
+									new Error(
+										`[sync-bus-pg] spill row ${envelope.id} not found`
+									)
+								);
 
-						return;
-					}
-					counters.spillFetched += 1;
-					counters.received += 1;
-					// postgres-js returns jsonb columns as text by default — only
-					// some configurations auto-parse to objects. Normalize both
-					// shapes so a future driver/version change can't break us
-					// silently.
-					const parsed =
-						typeof row.message === 'string'
-							? (JSON.parse(row.message) as Message)
-							: row.message;
-					onMessage(parsed);
-					// Intentionally NOT deleting here — see `vacuum()` below.
-				} catch (error) {
-					onError(error);
+								return;
+							}
+							counters.spillFetched += 1;
+							counters.received += 1;
+							// postgres-js returns jsonb columns as text by default — only
+							// some configurations auto-parse to objects. Normalize both
+							// shapes so a future driver/version change can't break us
+							// silently.
+							const parsed =
+								typeof row.message === 'string'
+									? (JSON.parse(row.message) as Message)
+									: row.message;
+							onMessage(parsed);
+							// Intentionally NOT deleting here — see `vacuum()` below.
+						} catch (error) {
+							onError(error);
+						}
+					})();
+				},
+				() => {
+					recordListenerConnected(connectionConfirmations > 0);
+					connectionConfirmations += 1;
 				}
-			})();
-		});
+			);
+		} catch (error) {
+			listener.activeSubscriptions -= 1;
+			listener.state =
+				listener.activeSubscriptions === 0 ? 'idle' : listener.state;
+			onError(error);
+			throw error;
+		}
+		startListenerMonitor();
 
+		let subscribed = true;
 		return async () => {
-			await handle.unlisten();
+			if (!subscribed) return;
+			subscribed = false;
+			try {
+				await handle.unlisten();
+			} finally {
+				listener.activeSubscriptions -= 1;
+				if (listener.activeSubscriptions === 0) {
+					stopListenerMonitor();
+					listener.state = 'idle';
+				}
+			}
 		};
 	};
 
@@ -321,7 +547,14 @@ const createPostgresBus = <Message>(
 
 	const metrics = (): PostgresClusterBusMetrics => ({ ...counters });
 
-	return { metrics, publish, subscribe, vacuum };
+	return {
+		listenerHealth,
+		metrics,
+		probeListener,
+		publish,
+		subscribe,
+		vacuum
+	};
 };
 
 /** Create a typed Postgres LISTEN/NOTIFY channel without coupling the payload

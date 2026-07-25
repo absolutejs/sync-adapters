@@ -12,7 +12,7 @@ export const manifest = defineManifest<PostgresClusterBusOptions>()({
 		accent: '#336791',
 		category: 'sync',
 		description:
-			'Postgres `LISTEN/NOTIFY` `ClusterBus` for `@absolutejs/sync` — horizontal scale across server instances without standing up Redis. Small batches ride the NOTIFY payload inline; oversized ones spill to a durable `sync_cluster_spill` table (auto-created, pruned via `bus.vacuum()`). Cumulative `bus.metrics()` counters surface fan-out health.',
+			'Postgres `LISTEN/NOTIFY` `ClusterBus` for `@absolutejs/sync` — horizontal scale across server instances without standing up Redis. Small batches ride the NOTIFY payload inline; oversized ones spill to a durable `sync_cluster_spill` table (auto-created, pruned via `bus.vacuum()`). `bus.listenerHealth()` self-probes the dedicated LISTEN connection while cumulative `bus.metrics()` counters surface fan-out health.',
 		docsUrl: 'https://github.com/absolutejs/sync-adapters/tree/main/bus-pg',
 		name: '@absolutejs/sync-bus-pg',
 		tagline: 'Scale live updates across servers with your Postgres.'
@@ -54,6 +54,37 @@ export const manifest = defineManifest<PostgresClusterBusOptions>()({
 							'LISTEN/NOTIFY channel name. Two engines on the same Postgres can stay separate by using different channels. Default absolutejs_sync_cluster.',
 						title: 'Channel name'
 					})
+				),
+				listenerHealth: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal(false, {
+								description:
+									'Disable automatic probes when another owner calls probeListener() on its own cadence.'
+							}),
+							Type.Object({
+								probeIntervalMs: Type.Optional(
+									Type.Integer({
+										default: 15000,
+										minimum: 1,
+										title: 'Listener probe interval (ms)'
+									})
+								),
+								probeTimeoutMs: Type.Optional(
+									Type.Integer({
+										default: 5000,
+										minimum: 1,
+										title: 'Listener probe timeout (ms)'
+									})
+								)
+							})
+						],
+						{
+							description:
+								'End-to-end self-probe configuration for the dedicated LISTEN connection.',
+							title: 'Listener health monitoring'
+						}
+					)
 				),
 				spill: Type.Optional(
 					Type.Union(
@@ -98,6 +129,19 @@ export const manifest = defineManifest<PostgresClusterBusOptions>()({
 			},
 			settings: Type.Object({
 				channel: Type.Optional(Type.String()),
+				listenerHealth: Type.Optional(
+					Type.Union([
+						Type.Literal(false),
+						Type.Object({
+							probeIntervalMs: Type.Optional(
+								Type.Integer({ minimum: 1 })
+							),
+							probeTimeoutMs: Type.Optional(
+								Type.Integer({ minimum: 1 })
+							)
+						})
+					])
+				),
 				spill: Type.Optional(
 					Type.Union([
 						Type.Literal('overflow'),

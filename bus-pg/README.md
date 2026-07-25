@@ -33,10 +33,15 @@ Every instance of your Elysia app does the same. A mutation committed on instanc
 
 ```ts
 createPostgresClusterBus({
-  sql,                                 // your postgres client
-  channel: 'absolutejs_sync_cluster',  // override to scope multiple engines on the same PG
-  spill: 'overflow',                   // 'overflow' (default) | 'always' | 'never'
-  onError: (e) => log.warn(e)          // listener-side errors
+	sql, // your postgres client
+	channel: 'absolutejs_sync_cluster', // override to scope multiple engines on the same PG
+	spill: 'overflow', // 'overflow' (default) | 'always' | 'never'
+	listenerHealth: {
+		// optional; these are the defaults
+		probeIntervalMs: 15_000,
+		probeTimeoutMs: 5_000
+	},
+	onError: (e) => log.warn(e) // listener-side errors
 });
 ```
 
@@ -46,6 +51,31 @@ createPostgresClusterBus({
 - **`'always'`** — every message goes through the `sync_cluster_spill` table (durable, slightly slower; useful when you want every cross-instance change to survive a NOTIFY drop).
 - **`'never'`** — throws if a message exceeds the inline budget. Useful in tests to assert payload-size discipline.
 
+## Listener health and reconnects
+
+postgres.js automatically recreates its dedicated listener connection and
+reissues `LISTEN` after a disconnect. A query-pool health check cannot prove
+that recovery has completed, so this adapter also sends a private probe through
+the full `pg_notify` → dedicated listener path every 15 seconds.
+
+```ts
+const health = bus.listenerHealth();
+// {
+//   state: 'connected' | 'connecting' | 'reconnecting' | 'idle',
+//   activeSubscriptions, connections, reconnects,
+//   probeAttempts, probeSuccesses, probeFailures,
+//   lastConnectedAt, lastProbeAttemptAt,
+//   lastProbeSucceededAt, lastProbeFailedAt
+// }
+
+const receivingNotifications = await bus.probeListener();
+```
+
+Probe envelopes never reach application callbacks and do not inflate message
+publish/receive counters. Monitoring starts with the first subscription and
+stops with the last unsubscribe. Set `listenerHealth: false` only when another
+owner calls `probeListener()` on its own cadence.
+
 ## Vacuum
 
 Oversized messages spill to `sync_cluster_spill`. Rows aren't auto-deleted on consume (every listener on the channel needs to read them, including the publisher's own listener which fetches but doesn't double-apply via the engine's `origin` filter). Sweep periodically:
@@ -54,14 +84,14 @@ Oversized messages spill to `sync_cluster_spill`. Rows aren't auto-deleted on co
 import { defineSchedule } from '@absolutejs/sync/engine';
 
 engine.registerSchedule(
-  defineSchedule({
-    name: 'vacuum-cluster-spill',
-    pattern: '*/5 * * * *', // every 5 minutes
-    run: async () => {
-      const pruned = await bus.vacuum(60_000); // older than 60s
-      console.log(`pruned ${pruned} spill rows`);
-    }
-  })
+	defineSchedule({
+		name: 'vacuum-cluster-spill',
+		pattern: '*/5 * * * *', // every 5 minutes
+		run: async () => {
+			const pruned = await bus.vacuum(60_000); // older than 60s
+			console.log(`pruned ${pruned} spill rows`);
+		}
+	})
 );
 ```
 
@@ -69,7 +99,7 @@ For workloads where messages stay small (the common case), the spill table never
 
 ## Caveats inherited from the engine seam
 
-- **Per-instance version cursors.** A client that reconnects to a *different* instance falls back to a fresh snapshot (cold-hydration cost, not catch-up diff). Use sticky sessions if cross-instance reconnect-with-`since` matters.
+- **Per-instance version cursors.** A client that reconnects to a _different_ instance falls back to a fresh snapshot (cold-hydration cost, not catch-up diff). Use sticky sessions if cross-instance reconnect-with-`since` matters.
 - **Best-effort delivery.** Inline NOTIFY can be lost if a listener connection drops mid-stream — every instance also has its own change log for resume, so a missed cross-instance fan-out is recovered on the next subscribe. For at-least-once cross-instance, run with `spill: 'always'`.
 
 ## License

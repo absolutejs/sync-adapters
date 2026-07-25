@@ -12,6 +12,7 @@ const makeMockSql = () => {
 	const notifies: string[] = [];
 	let spillRow: { id: string; message: ClusterMessage } | undefined;
 	let listener: ((payload: string) => void) | undefined;
+	let listenerReady: (() => void) | undefined;
 
 	const tag = ((strings: TemplateStringsArray, ...values: unknown[]) => {
 		const raw = strings.join('?').toLowerCase();
@@ -43,8 +44,14 @@ const makeMockSql = () => {
 		return Promise.resolve([]);
 	}) as any;
 	tag.unsafe = (_sql: string) => Promise.resolve([]);
-	tag.listen = (_channel: string, cb: (payload: string) => void) => {
+	tag.listen = (
+		_channel: string,
+		cb: (payload: string) => void,
+		onlisten?: () => void
+	) => {
 		listener = cb;
+		listenerReady = onlisten;
+		onlisten?.();
 		return Promise.resolve({ unlisten: () => Promise.resolve() });
 	};
 
@@ -53,11 +60,78 @@ const makeMockSql = () => {
 			if (listener) listener(payload);
 		},
 		notifies,
+		reconnect: () => listenerReady?.(),
 		sql: tag
 	};
 };
 
 describe('PostgresClusterBus.metrics() — 0.1.2', () => {
+	test('tracks listener connection, reconnect, probe, and unsubscribe lifecycle', async () => {
+		const mock = makeMockSql();
+		const bus = createPostgresClusterBus({
+			listenerHealth: false,
+			sql: mock.sql
+		});
+		expect(bus.listenerHealth().state).toBe('idle');
+		const unsubscribe = await bus.subscribe(() => {});
+		expect(bus.listenerHealth()).toMatchObject({
+			activeSubscriptions: 1,
+			connections: 1,
+			reconnects: 0,
+			state: 'connected'
+		});
+
+		mock.reconnect();
+		expect(bus.listenerHealth()).toMatchObject({
+			connections: 2,
+			reconnects: 1,
+			state: 'connected'
+		});
+
+		const probe = bus.probeListener();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		mock.deliver(mock.notifies.at(-1)!);
+		expect(await probe).toBe(true);
+		expect(bus.listenerHealth()).toMatchObject({
+			probeAttempts: 1,
+			probeFailures: 0,
+			probeSuccesses: 1,
+			state: 'connected'
+		});
+
+		await unsubscribe();
+		expect(bus.listenerHealth()).toMatchObject({
+			activeSubscriptions: 0,
+			state: 'idle'
+		});
+	});
+
+	test('marks a listener reconnecting when its end-to-end probe times out', async () => {
+		const mock = makeMockSql();
+		const errors: unknown[] = [];
+		const bus = createPostgresClusterBus({
+			listenerHealth: {
+				probeIntervalMs: 60_000,
+				probeTimeoutMs: 5
+			},
+			onError: (error) => errors.push(error),
+			sql: mock.sql
+		});
+		const unsubscribe = await bus.subscribe(() => {});
+
+		expect(await bus.probeListener()).toBe(false);
+		expect(bus.listenerHealth()).toMatchObject({
+			probeAttempts: 1,
+			probeFailures: 1,
+			probeSuccesses: 0,
+			state: 'reconnecting'
+		});
+		expect(bus.metrics().subscribeErrors).toBe(1);
+		expect(errors).toHaveLength(1);
+
+		await unsubscribe();
+	});
+
 	test('starts with zeroed counters', () => {
 		const { sql } = makeMockSql();
 		const bus = createPostgresClusterBus({ sql });
@@ -127,7 +201,10 @@ describe('PostgresClusterBus.metrics() — 0.1.2', () => {
 
 	test('spillFetched bumps on successful spill delivery', async () => {
 		const mock = makeMockSql();
-		const bus = createPostgresClusterBus({ sql: mock.sql, spill: 'always' });
+		const bus = createPostgresClusterBus({
+			sql: mock.sql,
+			spill: 'always'
+		});
 		await bus.subscribe(() => {});
 
 		// Publish first so the mock has a spill row to return.
@@ -161,9 +238,7 @@ describe('PostgresClusterBus.metrics() — 0.1.2', () => {
 		await bus.subscribe(() => {});
 
 		// Deliver a spill envelope for an id the mock has no row for.
-		mock.deliver(
-			JSON.stringify({ id: 'never-existed', kind: 'spill' })
-		);
+		mock.deliver(JSON.stringify({ id: 'never-existed', kind: 'spill' }));
 		await new Promise((resolve) => setTimeout(resolve, 5));
 
 		const m = bus.metrics();
