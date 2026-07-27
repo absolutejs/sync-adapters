@@ -111,6 +111,28 @@ export const createYjsText = (
 	let lastVector = Y.encodeStateVector(doc);
 
 	return {
+		anchorAt: (index) =>
+			toBase64(
+				Y.encodeRelativePosition(
+					Y.createRelativePositionFromTypeIndex(
+						text,
+						Math.max(0, Math.min(index, text.length))
+					)
+				)
+			),
+		indexOfAnchor: (anchor) => {
+			if (anchor === null) return 0;
+			try {
+				const absolute = Y.createAbsolutePositionFromRelativePosition(
+					Y.decodeRelativePosition(fromBase64(anchor)),
+					doc
+				);
+
+				return absolute?.type === text ? absolute.index : 0;
+			} catch {
+				return 0;
+			}
+		},
 		merge: (state) => {
 			apply(doc, state);
 			lastVector = Y.encodeStateVector(doc);

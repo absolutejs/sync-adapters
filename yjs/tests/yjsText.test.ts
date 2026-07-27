@@ -41,6 +41,19 @@ describe('Yjs collaborative text', () => {
 		expect(a.text()).toBe(b.text());
 		expect(a.text()).toBe('defghi');
 	});
+
+	test('relative cursor anchors survive remote inserts', () => {
+		const a = createYjsText('a');
+		a.setText('hello world');
+		const cursor = a.anchorAt?.(6);
+		const b = createYjsText('b', a.state());
+
+		b.setText('say hello world');
+		a.merge(b.state());
+
+		expect(cursor).toBeTruthy();
+		expect(a.indexOfAnchor?.(cursor ?? null)).toBe(10);
+	});
 });
 
 describe('Yjs delta-state (takeDelta)', () => {

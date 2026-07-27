@@ -31,6 +31,8 @@ doc.setText(textarea.value); // reconciles via a minimal diff
 socket.send(doc.state()); // broadcast the serialized (base64) state
 doc.merge(incomingState); // fold a peer's state into local edits
 doc.text(); // the merged visible text
+const cursor = doc.anchorAt?.(textarea.selectionStart); // stable relative cursor
+doc.indexOfAnchor?.(cursor ?? null); // follows concurrent inserts/deletes
 
 // Server — merge-on-write so concurrent writes combine instead of clobbering
 const next = yjsText.merge(storedState, incomingState);
