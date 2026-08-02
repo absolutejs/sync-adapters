@@ -117,5 +117,5 @@ Returns `ClusterBus & { metrics() }`. Pass to `engine.connectCluster(bus)`.
 
 ## License
 
-[Apache 2.0](../LICENSE). Tier B substrate-adjacent under the
+Apache 2.0. Tier B substrate-adjacent under the
 AbsoluteJS licensing policy — rides `@absolutejs/sync` (BSL Tier A).
