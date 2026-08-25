@@ -16,6 +16,44 @@ import type {
 	DeviceSubscription
 } from '@absolutejs/devices';
 import type { SyncClient } from '@absolutejs/sync/client';
+import { registerPlugin } from '@capacitor/core';
+
+export type CapacitorBackgroundSyncConfig = {
+	endpoint: string;
+	issuer: string;
+	clientId: string;
+	namespace: string;
+	databaseName?: string;
+	intervalMinutes?: number;
+	maxMutations?: number;
+	maxPulls?: number;
+	maxAttempts?: number;
+};
+
+export type CapacitorBackgroundSyncStatus = {
+	configured: boolean;
+	running: boolean;
+	lastRunAt?: number;
+	lastError?: string;
+	lastAcknowledged?: number;
+	lastPulled?: number;
+};
+
+export type AbsoluteBackgroundSyncPlugin = {
+	configure(options: CapacitorBackgroundSyncConfig): Promise<void>;
+	clear(): Promise<void>;
+	runNow(): Promise<CapacitorBackgroundSyncStatus>;
+	status(): Promise<CapacitorBackgroundSyncStatus>;
+};
+
+export const AbsoluteBackgroundSync =
+	registerPlugin<AbsoluteBackgroundSyncPlugin>('AbsoluteBackgroundSync');
+
+/** Configure the managed scheduler. Auth credentials remain in the native vault. */
+export const configureCapacitorBackgroundSync = (
+	options: CapacitorBackgroundSyncConfig,
+	plugin: AbsoluteBackgroundSyncPlugin = AbsoluteBackgroundSync
+) => plugin.configure(options);
 
 export type CapacitorSyncSqliteConnection = Pick<
 	SQLiteDBConnection,

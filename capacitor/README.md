@@ -42,6 +42,48 @@ issuer, public client ID, and subject. Signing out locks that partition by
 removing it from the active runtime; it does not silently destroy offline data.
 Signing back in as the same verified principal unlocks the same partition.
 
+## Managed native background Sync
+
+AbsoluteJS also configures `AbsoluteBackgroundSync` when the application uses
+both `@absolutejs/auth` and `@absolutejs/sync`. The native worker is deliberately
+finite: Android WorkManager or iOS `BGProcessingTask` wakes it, it refreshes a
+short-lived access token, pushes a bounded durable outbox batch, pulls the
+foreground client's persisted collection descriptors, commits the response to
+the same SQLite database, and exits. Foreground/resume Sync remains the
+correctness path because neither operating system guarantees when background
+work will run.
+
+The worker does not run application JavaScript and does not expose Capacitor
+APIs to a background WebView. Its credential and network boundary is fixed:
+
+- the OAuth refresh token is read from the shared native Keychain/Keystore
+  vault and sent only to the issuer-advertised HTTPS token endpoint;
+- the resulting bearer token, mutation arguments, and collection parameters
+  are sent only to the configured same-origin AbsoluteJS endpoint;
+- redirects fail closed, and response bodies are bounded before parsing;
+- a rotated refresh token is written back to the vault, while returned Sync
+  data is written only to the principal's SQLite partition.
+
+Direct Capacitor applications can configure the worker after resolving a
+verified principal:
+
+```ts
+import { configureCapacitorBackgroundSync } from '@absolutejs/sync-capacitor';
+
+await configureCapacitorBackgroundSync({
+	issuer: 'https://app.example.com',
+	clientId: 'mobile-public-client',
+	endpoint: 'https://app.example.com/__absolute/sync/background',
+	namespace: authenticatedPrincipalNamespace
+});
+```
+
+Call `AbsoluteBackgroundSync.clear()` on sign-out. On iOS, register
+`AbsoluteBackgroundSyncPlugin.registerBackgroundTask()` during application
+launch and list `<bundle-id>.absolutejs.background-sync` in
+`BGTaskSchedulerPermittedIdentifiers`; the AbsoluteJS mobile CLI owns those
+generated regions. Android scheduling is registered by the plugin.
+
 ## Platform notes
 
 - Native Android and iOS use SQLCipher through
@@ -51,6 +93,10 @@ Signing back in as the same verified principal unlocks the same partition.
   `@absolutejs/sync/client`; they do not need the plugin's WASM/web component.
 - The adapter serializes transactions so an app cannot overlap two explicit
   transactions on the same Capacitor connection.
+- The native iOS worker currently targets the SQLite plugin's default Documents
+  location. Applications that override `CapacitorSQLite.iosDatabaseLocation`
+  must keep foreground and background database locations aligned before
+  enabling managed background Sync.
 
 ## License
 

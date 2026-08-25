@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-capacitor",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Transactional Capacitor SQLite local store and native lifecycle adapter for @absolutejs/sync",
 	"repository": {
 		"type": "git",
@@ -29,20 +29,24 @@
 		"mobile"
 	],
 	"scripts": {
-		"build": "rm -rf dist && bun build src/index.ts --outdir dist --sourcemap --target=browser --external @absolutejs/sync --external @absolutejs/devices --external @capacitor-community/sqlite && tsc --project tsconfig.build.json",
+		"build": "rm -rf dist && bun build src/index.ts --outdir dist --sourcemap --target=browser --external @absolutejs/sync --external @absolutejs/devices --external @capacitor/core --external @capacitor-community/sqlite && tsc --project tsconfig.build.json",
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
 		"format": "prettier --write \"./**/*.{ts,json,md}\"",
 		"release": "bun run format && bun run typecheck && bun test && bun run build && npm publish"
 	},
 	"peerDependencies": {
-		"@absolutejs/devices": ">=0.0.2 <0.1.0",
-		"@absolutejs/sync": ">=2.22.0 <3",
+		"@absolutejs/devices": ">=0.0.3 <0.1.0",
+		"@absolutejs/devices-capacitor": ">=0.1.3 <0.2.0",
+		"@absolutejs/sync": ">=2.23.0 <3",
+		"@capacitor/core": ">=8 <9",
 		"@capacitor-community/sqlite": ">=8.1.1 <9"
 	},
 	"devDependencies": {
-		"@absolutejs/devices": "0.0.2",
-		"@absolutejs/sync": "2.22.0",
+		"@absolutejs/devices": "0.0.3",
+		"@absolutejs/devices-capacitor": "0.1.3",
+		"@absolutejs/sync": "2.23.0",
+		"@capacitor/core": "8.5.0",
 		"@capacitor-community/sqlite": "8.1.1",
 		"@types/bun": "1.3.14",
 		"prettier": "3.5.3",
@@ -56,8 +60,21 @@
 		}
 	},
 	"files": [
+		"android/src/main/",
+		"android/build.gradle",
 		"dist",
+		"ios/Sources/",
+		"Package.swift",
+		"AbsoluteSyncCapacitor.podspec",
 		"LICENSE",
 		"README.md"
-	]
+	],
+	"capacitor": {
+		"android": {
+			"src": "android"
+		},
+		"ios": {
+			"src": "ios"
+		}
+	}
 }
