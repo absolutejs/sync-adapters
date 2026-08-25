@@ -231,6 +231,33 @@ export const createCapacitorSyncLocalStore = ({
 						).values?.[0]?.record_json,
 						'collection'
 					),
+				listCollections: async () => {
+					const rows = (
+						await database.query(
+							'SELECT collection_key, record_json FROM absolute_sync_collections WHERE namespace = ? ORDER BY collection_key ASC',
+							[namespace]
+						)
+					).values;
+					return (rows ?? [])
+						.map((row) => {
+							const key = row.collection_key;
+							const record = parseRecord<LocalCollectionRecord>(
+								row.record_json,
+								'collection'
+							);
+							return typeof key === 'string' && record
+								? { key, record }
+								: undefined;
+						})
+						.filter(
+							(
+								entry
+							): entry is {
+								key: string;
+								record: LocalCollectionRecord;
+							} => entry !== undefined
+						);
+				},
 				putCollection: async (key, record) => {
 					writable();
 					await database.run(

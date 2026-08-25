@@ -3,6 +3,8 @@
 Native persistence and lifecycle wiring for `@absolutejs/sync` applications
 running in Capacitor. It stores confirmed rows, cursors, installation identity,
 and the durable mutation outbox in one principal-partitioned SQLite database.
+It also exposes namespace-scoped collection discovery so finite native workers
+can resume safe `id`-keyed pulls without application-authored worker code.
 
 AbsoluteJS provisions this automatically when Mobile, Sync, and Auth are enabled.
 Direct Capacitor applications can opt in explicitly:
