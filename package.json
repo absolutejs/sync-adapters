@@ -7,6 +7,7 @@
 	"workspaces": [
 		"automerge",
 		"bus-pg",
+		"capacitor",
 		"loro",
 		"redis",
 		"yjs"

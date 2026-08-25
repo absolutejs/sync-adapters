@@ -19,7 +19,15 @@ const PG_URL =
 	process.env.SYNC_BUS_PG_TEST_URL ??
 	'postgresql://postgres:postgres@localhost:54330/sync_bus_pg_tests';
 
-const sql = postgres(PG_URL, { max: 20 });
+const sql = process.env.SYNC_BUS_PG_TEST_SOCKET
+	? postgres({
+			database: 'sync_bus_pg_tests',
+			host: process.env.SYNC_BUS_PG_TEST_SOCKET,
+			max: 20,
+			password: 'postgres',
+			user: 'postgres'
+		})
+	: postgres(PG_URL, { max: 20 });
 afterAll(() => sql.end());
 
 type Task = { id: number; title: string };

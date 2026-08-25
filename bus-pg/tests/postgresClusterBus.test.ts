@@ -24,7 +24,15 @@ const PG_URL =
 // Each engine in a test grabs a dedicated LISTEN connection that's held for
 // the test's lifetime. With 5 tests × up to 2 engines × (listen + query), the
 // default pool gets exhausted partway through the suite — bump it.
-const sql = postgres(PG_URL, { max: 20 });
+const sql = process.env.SYNC_BUS_PG_TEST_SOCKET
+	? postgres({
+			database: 'sync_bus_pg_tests',
+			host: process.env.SYNC_BUS_PG_TEST_SOCKET,
+			max: 20,
+			password: 'postgres',
+			user: 'postgres'
+		})
+	: postgres(PG_URL, { max: 20 });
 afterAll(() => sql.end());
 
 type Task = { id: number; title: string };

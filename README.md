@@ -4,11 +4,12 @@ CRDT backend adapters for [`@absolutejs/sync`](https://github.com/absolutejs/syn
 private workspace monorepo. Each adapter is published as its own package and implements
 the `TextCrdtAdapter` contract from `@absolutejs/sync/crdt`; install only the one you want.
 
-| Adapter      | Package                      | Backend   | Status |
-| ------------ | ---------------------------- | --------- | ------ |
-| `yjs/`       | `@absolutejs/sync-yjs`       | Yjs       | ✅     |
-| `automerge/` | `@absolutejs/sync-automerge` | Automerge | ✅     |
-| `loro/`      | `@absolutejs/sync-loro`      | Loro      | ✅     |
+| Adapter      | Package                      | Backend                   | Status |
+| ------------ | ---------------------------- | ------------------------- | ------ |
+| `capacitor/` | `@absolutejs/sync-capacitor` | Native SQLite + lifecycle | ✅     |
+| `yjs/`       | `@absolutejs/sync-yjs`       | Yjs                       | ✅     |
+| `automerge/` | `@absolutejs/sync-automerge` | Automerge                 | ✅     |
+| `loro/`      | `@absolutejs/sync-loro`      | Loro                      | ✅     |
 
 ## Why adapters
 
