@@ -30,6 +30,12 @@ const removeLifecycle = await installCapacitorSyncLifecycle({
 });
 ```
 
+Resume and restored-connectivity events refresh the Auth-backed socket and ask
+the client to flush within a finite ten-second budget. Explicitly retryable
+failures obey the client's delivery ceiling; conflicts and permanent failures
+remain in the principal's dead-letter partition for explicit remediation rather
+than replaying forever.
+
 The namespace must come from a verified Auth principal, never from an untrusted
 route or form value. AbsoluteJS derives an opaque namespace from the verified
 issuer, public client ID, and subject. Signing out locks that partition by

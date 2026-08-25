@@ -10,9 +10,16 @@ test('refreshes and cleans up native resume/connectivity listeners', async () =>
 		  }) => void)
 		| undefined;
 	let disconnected = 0;
+	const flushBudgets: number[] = [];
 	let removed = 0;
 	const remove = await installCapacitorSyncLifecycle({
-		client: { reconnect: () => (disconnected += 1) },
+		client: {
+			reconnect: () => (disconnected += 1),
+			flush: async ({ timeoutMs } = {}) => {
+				flushBudgets.push(timeoutMs ?? -1);
+				return { deadLetters: 0, pending: 0, timedOut: false };
+			}
+		},
 		lifecycle: {
 			getState: async () => 'active',
 			onChange: async () => () => undefined,
@@ -40,6 +47,8 @@ test('refreshes and cleans up native resume/connectivity listeners', async () =>
 	network?.({ connected: false, connectionType: 'none' });
 	network?.({ connected: true, connectionType: 'wifi' });
 	expect(disconnected).toBe(2);
+	await Promise.resolve();
+	expect(flushBudgets).toEqual([10_000, 10_000]);
 	await remove();
 	await remove();
 	expect(removed).toBe(2);

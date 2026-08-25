@@ -48,10 +48,10 @@
     },
     "capacitor": {
       "name": "@absolutejs/sync-capacitor",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@absolutejs/devices": "0.0.2",
-        "@absolutejs/sync": "2.20.0",
+        "@absolutejs/sync": "2.22.0",
         "@capacitor-community/sqlite": "8.1.1",
         "@types/bun": "1.3.14",
         "prettier": "3.5.3",
@@ -59,7 +59,7 @@
       },
       "peerDependencies": {
         "@absolutejs/devices": ">=0.0.2 <0.1.0",
-        "@absolutejs/sync": ">=2.20.0 <3",
+        "@absolutejs/sync": ">=2.22.0 <3",
         "@capacitor-community/sqlite": ">=8.1.1 <9",
       },
     },
@@ -356,7 +356,7 @@
 
     "@absolutejs/sync/@absolutejs/manifest": ["@absolutejs/manifest@0.7.1", "", { "peerDependencies": { "@sinclair/typebox": ">=0.34.0 <0.35.0" }, "bin": { "absolute-manifest": "dist/cli.js" } }, "sha512-xlS8mbXvYk1k6ueI4aCflSqpSU78P0gEO56zc0kl/CVoa2iZ2qaTBONrhiaaM1aM+5zBbqlp5i8E4BiONhcKog=="],
 
-    "@absolutejs/sync-capacitor/@absolutejs/sync": ["@absolutejs/sync@2.20.0", "", { "dependencies": { "@absolutejs/manifest": "^0.9.0", "@absolutejs/telemetry": ">=0.2.0 <0.4.0", "@sinclair/typebox": "^0.34.0" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">=0.12.2 <0.13.0", "@angular/core": ">=21.2.18 <22", "@elysia/cron": "^2.0.0-beta.1", "@modelcontextprotocol/sdk": ">=1.29.0 <2", "@tanstack/db": ">=0.6.16 <0.7", "drizzle-orm": ">=1.0.0-rc.4 <2", "elysia": "^2.0.0-beta.6", "react": ">=19.2.8 <20", "svelte": ">=5.56.7 <6", "vue": ">=3.5.40 <4" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysia/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-2BiX0AlY37DGhimzgcBz5rHEC9b2BUQlgTgzJb8MeM9fxj7Hl9bmg3vspbQy+W0/kWNL8sSNrAZyKCGqmJU6/Q=="],
+    "@absolutejs/sync-capacitor/@absolutejs/sync": ["@absolutejs/sync@2.22.0", "", { "dependencies": { "@absolutejs/manifest": "^0.9.0", "@absolutejs/telemetry": ">=0.2.0 <0.4.0", "@sinclair/typebox": "^0.34.0" }, "peerDependencies": { "@absolutejs/isolated-jsc": ">=0.12.2 <0.13.0", "@angular/core": ">=21.2.18 <22", "@elysia/cron": "^2.0.0-beta.1", "@modelcontextprotocol/sdk": ">=1.29.0 <2", "@tanstack/db": ">=0.6.16 <0.7", "drizzle-orm": ">=1.0.0-rc.4 <2", "elysia": "^2.0.0-beta.6", "react": ">=19.2.8 <20", "svelte": ">=5.56.7 <6", "vue": ">=3.5.40 <4" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysia/cron", "@modelcontextprotocol/sdk", "@tanstack/db", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-rSuNyN54FgLgLjz8QaCqyFdiQWerceyZfeezYGGRpNZ4EeTD/4oflSmZ7JDumcfJPI5Dsvr2moGZ7W6btprw+A=="],
 
     "@absolutejs/sync-capacitor/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

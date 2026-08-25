@@ -307,21 +307,37 @@ export const createCapacitorSyncLocalStore = ({
 };
 
 export type CapacitorSyncLifecycleOptions = {
-	client: Pick<SyncClient, 'reconnect'>;
+	client: Pick<SyncClient, 'reconnect'> & Partial<Pick<SyncClient, 'flush'>>;
 	lifecycle: DeviceLifecycleCapability;
 	network: DeviceNetworkCapability;
+	/** Finite outbox budget after a wake-up. Defaults to 10 seconds. */
+	flushTimeoutMs?: number;
+	/** Lifecycle flush failures are observable without becoming unhandled. */
+	onError?: (error: unknown) => void;
 };
 
-/** Refreshes the socket/ticket immediately when the app resumes or reconnects. */
+/** Refreshes the socket/ticket and runs a bounded outbox flush after wake-up. */
 export const installCapacitorSyncLifecycle = async ({
 	client,
 	lifecycle,
-	network
+	network,
+	flushTimeoutMs = 10_000,
+	onError
 }: CapacitorSyncLifecycleOptions): Promise<DeviceSubscription> => {
+	if (!Number.isFinite(flushTimeoutMs) || flushTimeoutMs < 0)
+		throw new TypeError(
+			'Capacitor Sync flushTimeoutMs must be a non-negative number.'
+		);
+	const wake = () => {
+		client.reconnect();
+		void client
+			.flush?.({ timeoutMs: flushTimeoutMs })
+			.catch((error) => onError?.(error));
+	};
 	const removers = await Promise.all([
-		lifecycle.onResume?.(() => client.reconnect()) ?? (() => undefined),
+		lifecycle.onResume?.(wake) ?? (() => undefined),
 		network.onChange((status) => {
-			if (status.connected) client.reconnect();
+			if (status.connected) wake();
 		})
 	]);
 	let active = true;
