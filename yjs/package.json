@@ -36,7 +36,7 @@
 		"release": "bun run format && bun run build && bun publish"
 	},
 	"dependencies": {
-		"@absolutejs/manifest": "^0.7.1",
+		"@absolutejs/manifest": "^0.9.0",
 		"@sinclair/typebox": "^0.34.0",
 		"yjs": "^13.6.30"
 	},
@@ -67,16 +67,6 @@
 		"README.md"
 	],
 	"absolutejs": {
-		"manifestContract": 2,
-		"runtimePeers": {
-			"@absolutejs/sync": {
-				"artifactImports": [],
-				"buildExternals": [
-					"@absolutejs/sync"
-				],
-				"range": ">=2.11.0 <3",
-				"tested": "2.11.0"
-			}
-		}
+		"manifestContract": 2
 	}
 }
