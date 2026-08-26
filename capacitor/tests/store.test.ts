@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
 import { SyncLocalStoreSchemaError } from '@absolutejs/sync/client';
 import { assertSyncLocalStoreConformance } from '@absolutejs/sync/testing';
-import { createCapacitorSyncLocalStore } from '../src/index';
+import {
+	createCapacitorSyncLocalStore,
+	createCapacitorSyncProtection
+} from '../src/index';
 import { createFakeSqliteConnection } from './support/fakeSqlite';
 
 test('Capacitor SQLite passes the shared SyncLocalStore contract', async () => {
@@ -13,6 +16,64 @@ test('Capacitor SQLite passes the shared SyncLocalStore contract', async () => {
 			})
 		})
 	).resolves.toBeUndefined();
+});
+
+test('Capacitor SQLite encrypts records with a vault-held key', async () => {
+	const connection = createFakeSqliteConnection();
+	const values = new Map<string, string>();
+	const protection = createCapacitorSyncProtection({
+		secureStorage: {
+			capability: async () => ({ available: true, fidelity: 'native' }),
+			clear: async () => values.clear(),
+			get: async (key) => values.get(key) ?? null,
+			keys: async () => [...values.keys()],
+			remove: async (key) => void values.delete(key),
+			set: async (key, value) => void values.set(key, value),
+			withLock: async (_key, run) => run()
+		}
+	});
+	const schema = {
+		components: [
+			{
+				id: '@absolutejs/app',
+				version: 1,
+				localData: {
+					collections: [
+						{ match: 'private', protection: 'required' as const }
+					]
+				}
+			}
+		]
+	};
+	const store = createCapacitorSyncLocalStore({
+		connection: () => connection,
+		protection,
+		storageSchema: schema
+	});
+	await store.transaction('account-a', 'readwrite', (tx) =>
+		tx.putCollection('private', {
+			collection: 'private',
+			rows: [{ id: 1, secret: 'not-on-disk' }],
+			version: 1
+		})
+	);
+	const raw = await connection.query(
+		'SELECT record_json FROM absolute_sync_collections'
+	);
+	expect(String(raw.values?.[0]?.record_json)).toContain(
+		'__absoluteSyncProtected'
+	);
+	expect(String(raw.values?.[0]?.record_json)).not.toContain('not-on-disk');
+	const reopened = createCapacitorSyncLocalStore({
+		connection: () => connection,
+		protection,
+		storageSchema: schema
+	});
+	await expect(
+		reopened.transaction('account-a', 'readonly', (tx) =>
+			tx.getCollection('private')
+		)
+	).resolves.toMatchObject({ rows: [{ secret: 'not-on-disk' }] });
 });
 
 test('Capacitor SQLite applies the same migration across principal partitions', async () => {

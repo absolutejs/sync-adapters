@@ -53,5 +53,10 @@ test('native workers fail closed to the issuer origin and use the secure vault',
 		expect(source).toContain('Background request is too large.');
 		expect(source).toContain('advertised an unsafe token endpoint');
 		expect(source).toContain('setIfLease');
+		expect(source).toContain('absolutejs.sync.data-key.v1');
+		expect(source).toContain('__absoluteSyncProtected');
+		expect(source).toContain('aes-256-gcm-v1');
+		expect(source).toContain('absolute-sync-v1');
+		expect(source).toContain('Protected Sync data key is unavailable.');
 	}
 });

@@ -14,13 +14,16 @@ import { createSyncClient } from '@absolutejs/sync/client';
 import { lifecycle, network } from '@absolutejs/devices';
 import {
 	createCapacitorSyncLocalStore,
+	createCapacitorSyncProtection,
 	installCapacitorSyncLifecycle
 } from '@absolutejs/sync-capacitor';
 
 const client = createSyncClient({
 	url: 'wss://app.example.com/sync/ws',
 	durable: {
-		store: createCapacitorSyncLocalStore(),
+		store: createCapacitorSyncLocalStore({
+			protection: createCapacitorSyncProtection()
+		}),
 		namespace: authenticatedPrincipalNamespace
 	}
 });
@@ -86,6 +89,22 @@ deterministic component bundle. SQLite tracks each component independently,
 keeps removed-pack ledgers as orphan diagnostics, and migrates all records and
 ledger updates in one transaction.
 
+## Protected local data and quotas
+
+AbsoluteJS automatically installs `createCapacitorSyncProtection()`. It creates
+one random AES-256-GCM data key, seals that key in the existing iOS Keychain or
+Android Keystore vault, and writes only authenticated ciphertext envelopes to
+SQLite. Namespace, record kind, and collection/mutation name are authenticated
+as associated data. The foreground adapter and both finite native workers use
+the same versioned format; a missing key, changed identity, or modified record
+fails closed. Direct Capacitor integrations opt in as shown above.
+
+The generated `localData` policy also enforces memory-only records,
+whole-projection expiry, deterministic eviction priority, and a logical
+per-principal byte ceiling. Pending mutations are never evicted. When protected
+data declares a memory-only fallback, browsers without an audited key provider
+remain usable without writing that data to disk.
+
 ## Managed native background Sync
 
 AbsoluteJS also configures `AbsoluteBackgroundSync` when the application uses
@@ -130,9 +149,10 @@ generated regions. Android scheduling is registered by the plugin.
 
 ## Platform notes
 
-- Native Android and iOS use SQLCipher through
-  `@capacitor-community/sqlite`, including for unencrypted databases. Review the
-  plugin's encryption-export compliance notice before shipping.
+- AbsoluteJS protects record payloads with AES-256-GCM rather than claiming the
+  default SQLite connection is SQLCipher-encrypted. SQLite keys, namespaces,
+  and ordering columns remain metadata; sensitive row and mutation payloads are
+  ciphertext. Review platform encryption-export requirements before shipping.
 - Web/PWA builds should use `createIndexedDbSyncLocalStore` from
   `@absolutejs/sync/client`; they do not need the plugin's WASM/web component.
 - The adapter serializes transactions so an app cannot overlap two explicit

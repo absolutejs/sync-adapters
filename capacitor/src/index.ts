@@ -10,13 +10,17 @@ import type {
 	SyncLocalStoreMode,
 	SyncLocalStoreSchemaInput,
 	SyncLocalStoreSchemaStatus,
+	SyncLocalProtectionProvider,
+	SyncLocalRecordProtector,
 	SyncLocalTransaction
 } from '@absolutejs/sync/client';
 import {
 	createSyncLocalSchemaStatus,
 	migrateSyncLocalCollectionRecord,
 	migrateSyncLocalMutationRecord,
-	resolveSyncLocalSchemaComponents
+	resolveSyncLocalDataPolicy,
+	resolveSyncLocalSchemaComponents,
+	runSyncLocalPolicyTransaction
 } from '@absolutejs/sync/client';
 import type {
 	DeviceLifecycleCapability,
@@ -25,6 +29,89 @@ import type {
 } from '@absolutejs/devices';
 import type { SyncClient } from '@absolutejs/sync/client';
 import { registerPlugin } from '@capacitor/core';
+import { createCapacitorSecureStorage } from '@absolutejs/devices-capacitor';
+import type { DeviceSecureStorageCapability } from '@absolutejs/devices';
+import { gcm } from '@noble/ciphers/aes.js';
+import { randomBytes } from '@noble/ciphers/utils.js';
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+const base64 = (value: Uint8Array) => {
+	let binary = '';
+	for (const byte of value) binary += String.fromCharCode(byte);
+	return btoa(binary);
+};
+const unbase64 = (value: string) =>
+	Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+
+export type CapacitorSyncProtectionOptions = {
+	secureStorage?: DeviceSecureStorageCapability;
+};
+
+/** AES-256-GCM record protection whose key is sealed by Keychain/Keystore. */
+export const createCapacitorSyncProtection = (
+	options: CapacitorSyncProtectionOptions = {}
+): SyncLocalProtectionProvider => {
+	const storage =
+		options.secureStorage ??
+		createCapacitorSecureStorage({ prefix: 'absolutejs.sync.' });
+	const keyName = 'data-key.v1';
+	return {
+		prepare: async (): Promise<SyncLocalRecordProtector> => {
+			const capability = await storage.capability();
+			if (!capability.available)
+				throw new Error(
+					'Native Sync data protection requires persistent Keychain/Keystore storage.'
+				);
+			const load = async () => {
+				const existing = await storage.get(keyName);
+				if (existing) return unbase64(existing);
+				const created = randomBytes(32);
+				await storage.set(keyName, base64(created));
+				return created;
+			};
+			const key = storage.withLock
+				? await storage.withLock(keyName, load)
+				: await load();
+			if (key.byteLength !== 32)
+				throw new Error('Native Sync data-protection key is invalid.');
+			const additionalData = (context: {
+				kind: string;
+				name: string;
+				namespace: string;
+			}) =>
+				textEncoder.encode(
+					`absolute-sync-v1\u0000${context.kind}\u0000${context.namespace}\u0000${context.name}`
+				);
+			return {
+				id: 'aes-256-gcm-v1',
+				open: (value, context) => {
+					const bytes = unbase64(value);
+					const nonce = bytes.slice(0, 12);
+					return textDecoder.decode(
+						gcm(key, nonce, additionalData(context)).decrypt(
+							bytes.slice(12)
+						)
+					);
+				},
+				seal: (value, context) => {
+					const nonce = randomBytes(12);
+					const encrypted = gcm(
+						key,
+						nonce,
+						additionalData(context)
+					).encrypt(textEncoder.encode(value));
+					const output = new Uint8Array(
+						nonce.length + encrypted.length
+					);
+					output.set(nonce);
+					output.set(encrypted, nonce.length);
+					return base64(output);
+				}
+			};
+		}
+	};
+};
 
 export type CapacitorBackgroundSyncConfig = {
 	endpoint: string;
@@ -85,6 +172,8 @@ export type CapacitorSyncLocalStoreOptions = {
 	connection?: CapacitorSyncSqliteFactory;
 	/** Same generated logical migration plan used by web IndexedDB. */
 	storageSchema?: SyncLocalStoreSchemaInput;
+	protection?: SyncLocalProtectionProvider;
+	now?: () => number;
 };
 
 const SCHEMA = `
@@ -124,14 +213,46 @@ const firstString = (rows: SqliteRow[] | undefined, field: string) => {
 	return typeof value === 'string' ? value : undefined;
 };
 
-const parseRecord = <T>(value: unknown, label: string): T | undefined => {
+type ProtectedRecordEnvelope = {
+	__absoluteSyncProtected: {
+		name: string;
+		protector: string;
+		value: string;
+	};
+};
+
+const parseRecord = <T>(
+	value: unknown,
+	label: string,
+	context?: { kind: 'collection' | 'mutation'; namespace: string },
+	protector?: SyncLocalRecordProtector
+): T | undefined => {
 	if (value === undefined) return undefined;
 	if (typeof value !== 'string')
 		throw new Error(
 			`Capacitor Sync SQLite returned invalid ${label} JSON.`
 		);
 	try {
-		return JSON.parse(value) as T;
+		const parsed: unknown = JSON.parse(value);
+		if (
+			typeof parsed === 'object' &&
+			parsed !== null &&
+			'__absoluteSyncProtected' in parsed
+		) {
+			const envelope = (parsed as ProtectedRecordEnvelope)
+				.__absoluteSyncProtected;
+			if (!context || !protector || protector.id !== envelope.protector)
+				throw new Error(
+					`Capacitor Sync ${label} requires unavailable protection provider "${envelope.protector}".`
+				);
+			return JSON.parse(
+				protector.open(envelope.value, {
+					...context,
+					name: envelope.name
+				})
+			) as T;
+		}
+		return parsed as T;
 	} catch (cause) {
 		throw new Error(
 			`Capacitor Sync SQLite could not parse ${label} JSON.`,
@@ -141,6 +262,25 @@ const parseRecord = <T>(value: unknown, label: string): T | undefined => {
 		);
 	}
 };
+
+const serializeRecord = (
+	value: LocalCollectionRecord | LocalMutationRecord,
+	context: {
+		kind: 'collection' | 'mutation';
+		name: string;
+		namespace: string;
+	},
+	protector?: SyncLocalRecordProtector
+) =>
+	protector
+		? JSON.stringify({
+				__absoluteSyncProtected: {
+					name: context.name,
+					protector: protector.id,
+					value: protector.seal(JSON.stringify(value), context)
+				}
+			} satisfies ProtectedRecordEnvelope)
+		: JSON.stringify(value);
 
 const defaultConnection = async (
 	databaseName: string
@@ -173,13 +313,19 @@ const requireNamespace = (namespace: string) => {
 export const createCapacitorSyncLocalStore = ({
 	databaseName = 'absolutejs-sync-local-v1',
 	connection: createConnection = () => defaultConnection(databaseName),
-	storageSchema = { version: 1 }
+	storageSchema = { version: 1 },
+	protection,
+	now = Date.now
 }: CapacitorSyncLocalStoreOptions = {}): SyncLocalStore => {
 	if (databaseName.length === 0)
 		throw new TypeError('Capacitor Sync databaseName cannot be empty.');
+	const localData = resolveSyncLocalDataPolicy(storageSchema);
+	let protectorPromise: Promise<SyncLocalRecordProtector> | undefined;
+	const prepareProtector = () => (protectorPromise ??= protection?.prepare());
 	let schemaStatus: SyncLocalStoreSchemaStatus | undefined;
 	const prepareSchema = async (
-		database: CapacitorSyncSqliteConnection
+		database: CapacitorSyncSqliteConnection,
+		protector: SyncLocalRecordProtector | undefined
 	): Promise<void> => {
 		await database.beginTransaction();
 		try {
@@ -234,7 +380,9 @@ export const createCapacitorSyncLocalStore = ({
 						);
 					const record = parseRecord<LocalCollectionRecord>(
 						row.record_json,
-						'collection'
+						'collection',
+						{ kind: 'collection', namespace },
+						protector
 					);
 					if (record === undefined)
 						throw new Error(
@@ -254,7 +402,19 @@ export const createCapacitorSyncLocalStore = ({
 					else
 						await database.run(
 							'UPDATE absolute_sync_collections SET record_json = ? WHERE namespace = ? AND collection_key = ?',
-							[JSON.stringify(migrated), namespace, key],
+							[
+								serializeRecord(
+									migrated,
+									{
+										kind: 'collection',
+										name: migrated.collection ?? key,
+										namespace
+									},
+									protector
+								),
+								namespace,
+								key
+							],
 							false
 						);
 				}
@@ -276,7 +436,9 @@ export const createCapacitorSyncLocalStore = ({
 						);
 					const record = parseRecord<LocalMutationRecord>(
 						row.record_json,
-						'mutation'
+						'mutation',
+						{ kind: 'mutation', namespace },
+						protector
 					);
 					if (record === undefined)
 						throw new Error(
@@ -298,7 +460,15 @@ export const createCapacitorSyncLocalStore = ({
 							'UPDATE absolute_sync_mutations SET created_at = ?, record_json = ? WHERE namespace = ? AND operation_id = ?',
 							[
 								migrated.createdAt,
-								JSON.stringify(migrated),
+								serializeRecord(
+									migrated,
+									{
+										kind: 'mutation',
+										name: migrated.name,
+										namespace
+									},
+									protector
+								),
 								namespace,
 								operationId
 							],
@@ -342,13 +512,14 @@ export const createCapacitorSyncLocalStore = ({
 
 	let connectionPromise: Promise<CapacitorSyncSqliteConnection> | undefined;
 	const connection = () => {
-		connectionPromise ??= Promise.resolve(createConnection()).then(
-			async (database) => {
-				await database.execute(SCHEMA);
-				await prepareSchema(database);
-				return database;
-			}
-		);
+		connectionPromise ??= Promise.all([
+			Promise.resolve(createConnection()),
+			prepareProtector()
+		]).then(async ([database, protector]) => {
+			await database.execute(SCHEMA);
+			await prepareSchema(database, protector);
+			return database;
+		});
 		return connectionPromise;
 	};
 	let tail = Promise.resolve();
@@ -374,6 +545,7 @@ export const createCapacitorSyncLocalStore = ({
 		requireNamespace(namespace);
 		return locked(async () => {
 			const database = await connection();
+			const protector = await prepareProtector();
 			await database.beginTransaction();
 			const writable = () => {
 				if (mode !== 'readwrite')
@@ -412,7 +584,9 @@ export const createCapacitorSyncLocalStore = ({
 								[namespace, key]
 							)
 						).values?.[0]?.record_json,
-						'collection'
+						'collection',
+						{ kind: 'collection', namespace },
+						protector
 					),
 				listCollections: async () => {
 					const rows = (
@@ -426,7 +600,9 @@ export const createCapacitorSyncLocalStore = ({
 							const key = row.collection_key;
 							const record = parseRecord<LocalCollectionRecord>(
 								row.record_json,
-								'collection'
+								'collection',
+								{ kind: 'collection', namespace },
+								protector
 							);
 							return typeof key === 'string' && record
 								? { key, record }
@@ -445,7 +621,19 @@ export const createCapacitorSyncLocalStore = ({
 					writable();
 					await database.run(
 						'INSERT INTO absolute_sync_collections (namespace, collection_key, record_json) VALUES (?, ?, ?) ON CONFLICT(namespace, collection_key) DO UPDATE SET record_json = excluded.record_json',
-						[namespace, key, JSON.stringify(record)],
+						[
+							namespace,
+							key,
+							serializeRecord(
+								record,
+								{
+									kind: 'collection',
+									name: record.collection ?? key,
+									namespace
+								},
+								protector
+							)
+						],
 						false
 					);
 				},
@@ -468,7 +656,9 @@ export const createCapacitorSyncLocalStore = ({
 						.map((row) =>
 							parseRecord<LocalMutationRecord>(
 								row.record_json,
-								'mutation'
+								'mutation',
+								{ kind: 'mutation', namespace },
+								protector
 							)
 						)
 						.filter(
@@ -484,7 +674,9 @@ export const createCapacitorSyncLocalStore = ({
 								[namespace, operationId]
 							)
 						).values?.[0]?.record_json,
-						'mutation'
+						'mutation',
+						{ kind: 'mutation', namespace },
+						protector
 					),
 				putMutation: async (record) => {
 					writable();
@@ -494,7 +686,15 @@ export const createCapacitorSyncLocalStore = ({
 							namespace,
 							record.operationId,
 							record.createdAt,
-							JSON.stringify(record)
+							serializeRecord(
+								record,
+								{
+									kind: 'mutation',
+									name: record.name,
+									namespace
+								},
+								protector
+							)
 						],
 						false
 					);
@@ -509,7 +709,14 @@ export const createCapacitorSyncLocalStore = ({
 				}
 			};
 			try {
-				const result = await run(tx);
+				const result = await runSyncLocalPolicyTransaction({
+					mode,
+					now: now(),
+					policy: localData,
+					protected: protector !== undefined,
+					raw: tx,
+					run
+				});
 				await database.commitTransaction();
 				return result;
 			} catch (error) {

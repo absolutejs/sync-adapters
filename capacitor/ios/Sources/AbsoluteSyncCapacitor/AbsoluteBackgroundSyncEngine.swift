@@ -1,4 +1,5 @@
 import AbsoluteDevicesCapacitor
+import CryptoKit
 import Foundation
 import SQLite3
 
@@ -13,6 +14,7 @@ private struct NativeBatch { let body: [String: Any]; let mutations: [String: Na
 
 enum AbsoluteBackgroundSyncEngine {
     private static let refreshKey = "absolutejs.auth.oidc.refresh"
+    private static let dataKeyName = "absolutejs.sync.data-key.v1"
     private static let maxResponse = 5 * 1024 * 1024
 
     static func record(_ error: Error) {
@@ -65,17 +67,17 @@ enum AbsoluteBackgroundSyncEngine {
         do {
             var mutations: [[String: Any]] = [], mutationMap: [String: NativeMutation] = [:]
             for row in try rows(db, "SELECT operation_id,record_json FROM absolute_sync_mutations WHERE namespace=? ORDER BY created_at,operation_id", [config.namespace]) where mutations.count < config.maxMutations {
-                let id = row[0], record = try object(row[1]); let now = Date().timeIntervalSince1970 * 1000
+                let id = row[0], record = try decodeRecord(row[1], kind: "mutation", namespace: config.namespace); let now = Date().timeIntervalSince1970 * 1000
                 if record["state"] as? String == "dead-letter" || (record["nextAttemptAt"] as? NSNumber)?.doubleValue ?? 0 > now { continue }
                 let attempts = ((record["attempts"] as? NSNumber)?.intValue ?? 0) + 1; var next = record; next["attempts"] = attempts; next.removeValue(forKey: "nextAttemptAt")
-                try updateRecord(db, "absolute_sync_mutations", "operation_id", config.namespace, id, next)
+                try updateRecord(db, "absolute_sync_mutations", "operation_id", "mutation", config.namespace, id, next)
 				guard let name = record["name"] as? String else { throw SyncNativeError.invalidResponse("Local mutation has no name.") }
                 var mutation: [String: Any] = ["operationId": id, "name": name]; if let args = record["args"] { mutation["args"] = args }
                 mutations.append(mutation); mutationMap[id] = NativeMutation(id: id, attempts: attempts)
             }
             var pulls: [[String: Any]] = [], pullMap: [String: [String: Any]] = [:]
             for row in try rows(db, "SELECT collection_key,record_json FROM absolute_sync_collections WHERE namespace=? ORDER BY collection_key", [config.namespace]) where pulls.count < config.maxPulls {
-                let key = row[0], record = try object(row[1]); guard let collection = record["collection"] as? String, !collection.isEmpty else { continue }
+                let key = row[0], record = try decodeRecord(row[1], kind: "collection", namespace: config.namespace); guard let collection = record["collection"] as? String, !collection.isEmpty else { continue }
                 var pull: [String: Any] = ["id": key, "collection": collection]; if let params = record["params"] { pull["params"] = params }
                 if record["headlessKey"] as? String == "id" { if let cursor = record["cursor"] { pull["since"] = cursor } else if ((record["version"] as? NSNumber)?.intValue ?? 0) > 0 { pull["since"] = record["version"] } }
                 pulls.append(pull); pullMap[key] = record
@@ -91,17 +93,17 @@ enum AbsoluteBackgroundSyncEngine {
         var acknowledged = 0, pulled = 0; try execute(db, "BEGIN IMMEDIATE")
         do {
             for sent in batch.mutations.values {
-                guard var current = try record(db, "absolute_sync_mutations", "operation_id", config.namespace, sent.id), (current["attempts"] as? NSNumber)?.intValue == sent.attempts else { continue }
+                guard var current = try record(db, "absolute_sync_mutations", "operation_id", "mutation", config.namespace, sent.id), (current["attempts"] as? NSNumber)?.intValue == sent.attempts else { continue }
                 if mutationResults[sent.id]?["status"] as? String == "ack" { try execute(db, "DELETE FROM absolute_sync_mutations WHERE namespace=? AND operation_id=?", [config.namespace, sent.id]); acknowledged += 1; continue }
                 let rejection = mutationResults[sent.id]?["rejection"] as? [String: Any] ?? ["kind": "retryable", "message": "Missing mutation response."]
                 current["lastError"] = rejection["message"]; current["rejection"] = rejection
                 if rejection["kind"] as? String != "retryable" || sent.attempts >= config.maxAttempts { current["state"] = "dead-letter"; current["deadLetteredAt"] = Date().timeIntervalSince1970 * 1000; current.removeValue(forKey: "nextAttemptAt") }
                 else { let hint = (rejection["retryAfterMs"] as? NSNumber)?.doubleValue ?? min(30_000, 500 * pow(2, Double(max(0, sent.attempts - 1)))); current["state"] = "pending"; current["nextAttemptAt"] = Date().timeIntervalSince1970 * 1000 + max(0, hint) }
-                try updateRecord(db, "absolute_sync_mutations", "operation_id", config.namespace, sent.id, current)
+                try updateRecord(db, "absolute_sync_mutations", "operation_id", "mutation", config.namespace, sent.id, current)
             }
             for (key, baseline) in batch.pulls {
-                guard let result = pullResults[key], result["type"] as? String != "error", let current = try record(db, "absolute_sync_collections", "collection_key", config.namespace, key), same(current, baseline) else { continue }
-                try updateRecord(db, "absolute_sync_collections", "collection_key", config.namespace, key, try applyPull(current, result)); pulled += 1
+                guard let result = pullResults[key], result["type"] as? String != "error", let current = try record(db, "absolute_sync_collections", "collection_key", "collection", config.namespace, key), same(current, baseline) else { continue }
+                try updateRecord(db, "absolute_sync_collections", "collection_key", "collection", config.namespace, key, try applyPull(current, result)); pulled += 1
             }
             try execute(db, "COMMIT"); return (acknowledged, pulled)
         } catch { try? execute(db, "ROLLBACK"); throw error }
@@ -123,8 +125,12 @@ enum AbsoluteBackgroundSyncEngine {
     private static func index(_ value: Any?, _ field: String) -> [String: [String: Any]] { var result: [String: [String: Any]] = [:]; for item in value as? [[String: Any]] ?? [] { if let key = item[field] as? String { result[key] = item } }; return result }
 
     private static func object(_ json: String) throws -> [String: Any] { guard let value = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { throw SyncNativeError.invalidResponse("Invalid local Sync record.") }; return value }
-    private static func record(_ db: OpaquePointer, _ table: String, _ field: String, _ namespace: String, _ id: String) throws -> [String: Any]? { guard let value = try rows(db, "SELECT record_json FROM \(table) WHERE namespace=? AND \(field)=? LIMIT 1", [namespace,id]).first?.first else { return nil }; return try object(value) }
-    private static func updateRecord(_ db: OpaquePointer, _ table: String, _ field: String, _ namespace: String, _ id: String, _ value: [String: Any]) throws { let json = String(data: try JSONSerialization.data(withJSONObject: value), encoding: .utf8)!; try execute(db, "UPDATE \(table) SET record_json=? WHERE namespace=? AND \(field)=?", [json,namespace,id]) }
+    private static func dataKey() throws -> SymmetricKey? { guard let value = try AbsoluteSecureStorageVault.get(dataKeyName) else { return nil }; guard let bytes = Data(base64Encoded: value), bytes.count == 32 else { throw SyncNativeError.invalidResponse("Protected Sync data key is invalid.") }; return SymmetricKey(data: bytes) }
+    private static func aad(_ kind: String, _ namespace: String, _ name: String) -> Data { Data("absolute-sync-v1\u{0}\(kind)\u{0}\(namespace)\u{0}\(name)".utf8) }
+    private static func decodeRecord(_ stored: String, kind: String, namespace: String) throws -> [String: Any] { let outer = try object(stored); guard let envelope = outer["__absoluteSyncProtected"] as? [String: Any] else { return outer }; guard envelope["protector"] as? String == "aes-256-gcm-v1", let name = envelope["name"] as? String, let encoded = envelope["value"] as? String, let packed = Data(base64Encoded: encoded), packed.count >= 28, let key = try dataKey() else { throw SyncNativeError.invalidResponse("Protected Sync data key is unavailable.") }; let nonce = try AES.GCM.Nonce(data: packed.prefix(12)), ciphertextAndTag = packed.dropFirst(12), box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertextAndTag.dropLast(16), tag: ciphertextAndTag.suffix(16)); return try object(String(data: try AES.GCM.open(box, using: key, authenticating: aad(kind, namespace, name)), encoding: .utf8)!) }
+    private static func encodeRecord(_ value: [String: Any], kind: String, namespace: String, name: String) throws -> String { let plain = try JSONSerialization.data(withJSONObject: value); guard let key = try dataKey() else { return String(data: plain, encoding: .utf8)! }; let sealed = try AES.GCM.seal(plain, using: key, authenticating: aad(kind, namespace, name)); var packed = Data(sealed.nonce); packed.append(sealed.ciphertext); packed.append(sealed.tag); let envelope: [String: Any] = ["__absoluteSyncProtected": ["name": name, "protector": "aes-256-gcm-v1", "value": packed.base64EncodedString()]]; return String(data: try JSONSerialization.data(withJSONObject: envelope), encoding: .utf8)! }
+    private static func record(_ db: OpaquePointer, _ table: String, _ field: String, _ kind: String, _ namespace: String, _ id: String) throws -> [String: Any]? { guard let value = try rows(db, "SELECT record_json FROM \(table) WHERE namespace=? AND \(field)=? LIMIT 1", [namespace,id]).first?.first else { return nil }; return try decodeRecord(value, kind: kind, namespace: namespace) }
+    private static func updateRecord(_ db: OpaquePointer, _ table: String, _ field: String, _ kind: String, _ namespace: String, _ id: String, _ value: [String: Any]) throws { let name = (value[kind == "mutation" ? "name" : "collection"] as? String) ?? id; let json = try encodeRecord(value, kind: kind, namespace: namespace, name: name); try execute(db, "UPDATE \(table) SET record_json=? WHERE namespace=? AND \(field)=?", [json,namespace,id]) }
     private static func rows(_ db: OpaquePointer, _ sql: String, _ bindings: [String]) throws -> [[String]] { var statement: OpaquePointer?; guard sqlite3_prepare_v2(db,sql,-1,&statement,nil)==SQLITE_OK else { throw SyncNativeError.invalidResponse("SQLite prepare failed.") }; defer{sqlite3_finalize(statement)}; for (i,value) in bindings.enumerated(){sqlite3_bind_text(statement,Int32(i+1),(value as NSString).utf8String,-1,SQLITE_TRANSIENT)}; var output:[[String]]=[]; while sqlite3_step(statement)==SQLITE_ROW { output.append((0..<sqlite3_column_count(statement)).map{String(cString:sqlite3_column_text(statement,$0))}) }; return output }
     private static func execute(_ db: OpaquePointer, _ sql: String, _ bindings: [String] = []) throws { var statement: OpaquePointer?; guard sqlite3_prepare_v2(db,sql,-1,&statement,nil)==SQLITE_OK else { throw SyncNativeError.invalidResponse("SQLite prepare failed.") }; defer{sqlite3_finalize(statement)}; for(i,value)in bindings.enumerated(){sqlite3_bind_text(statement,Int32(i+1),(value as NSString).utf8String,-1,SQLITE_TRANSIENT)}; guard sqlite3_step(statement)==SQLITE_DONE else { throw SyncNativeError.invalidResponse("SQLite write failed.") } }
 
