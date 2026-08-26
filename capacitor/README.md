@@ -46,7 +46,8 @@ Signing back in as the same verified principal unlocks the same partition.
 
 ## Installed-data upgrades
 
-`storageSchema` accepts the same generated `SyncLocalStoreSchema` used by
+`storageSchema` accepts the same generated `SyncLocalStoreSchema` or
+component bundle used by
 `createIndexedDbSyncLocalStore`. Before any foreground transaction begins, the
 adapter migrates every principal's collections, durable mutations, and logical
 schema marker inside one SQLite transaction. A transform failure or process
@@ -79,6 +80,11 @@ const store = createCapacitorSyncLocalStore({
 	}
 });
 ```
+
+Absolute composes the app schema and every installed Sync pack into a
+deterministic component bundle. SQLite tracks each component independently,
+keeps removed-pack ledgers as orphan diagnostics, and migrates all records and
+ledger updates in one transaction.
 
 ## Managed native background Sync
 

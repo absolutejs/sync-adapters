@@ -8,14 +8,15 @@ import type {
 	LocalMutationRecord,
 	SyncLocalStore,
 	SyncLocalStoreMode,
-	SyncLocalStoreSchema,
+	SyncLocalStoreSchemaInput,
 	SyncLocalStoreSchemaStatus,
 	SyncLocalTransaction
 } from '@absolutejs/sync/client';
 import {
+	createSyncLocalSchemaStatus,
 	migrateSyncLocalCollectionRecord,
 	migrateSyncLocalMutationRecord,
-	resolveSyncLocalMigrations
+	resolveSyncLocalSchemaComponents
 } from '@absolutejs/sync/client';
 import type {
 	DeviceLifecycleCapability,
@@ -83,12 +84,16 @@ export type CapacitorSyncLocalStoreOptions = {
 	/** Injection seam for tests and custom SQLCipher provisioning. */
 	connection?: CapacitorSyncSqliteFactory;
 	/** Same generated logical migration plan used by web IndexedDB. */
-	storageSchema?: SyncLocalStoreSchema;
+	storageSchema?: SyncLocalStoreSchemaInput;
 };
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS absolute_sync_schema (
   singleton_id INTEGER PRIMARY KEY NOT NULL CHECK (singleton_id = 1),
+  logical_version INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS absolute_sync_schema_components (
+  component_id TEXT PRIMARY KEY NOT NULL,
   logical_version INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS absolute_sync_metadata (
@@ -178,17 +183,40 @@ export const createCapacitorSyncLocalStore = ({
 	): Promise<void> => {
 		await database.beginTransaction();
 		try {
-			const saved = (
+			const legacySaved = (
 				await database.query(
 					'SELECT logical_version FROM absolute_sync_schema WHERE singleton_id = 1 LIMIT 1'
 				)
 			).values?.[0]?.logical_version;
-			const storedVersion = typeof saved === 'number' ? saved : 1;
-			const resolved = resolveSyncLocalMigrations(
-				storedVersion,
+			const componentRows = (
+				await database.query(
+					'SELECT component_id, logical_version FROM absolute_sync_schema_components ORDER BY component_id'
+				)
+			).values;
+			const storedVersions: Record<string, number> = {};
+			for (const row of componentRows ?? []) {
+				if (
+					typeof row.component_id !== 'string' ||
+					typeof row.logical_version !== 'number'
+				)
+					throw new Error(
+						'Capacitor Sync SQLite returned an invalid schema component ledger.'
+					);
+				storedVersions[row.component_id] = row.logical_version;
+			}
+			if (
+				storedVersions['@absolutejs/app'] === undefined &&
+				typeof legacySaved === 'number'
+			)
+				storedVersions['@absolutejs/app'] = legacySaved;
+			const resolved = resolveSyncLocalSchemaComponents(
+				storedVersions,
 				storageSchema
 			);
-			if (resolved.steps.length > 0) {
+			const steps = resolved.components.flatMap(
+				(component) => component.steps
+			);
+			if (steps.length > 0) {
 				const collections = (
 					await database.query(
 						'SELECT namespace, collection_key, record_json FROM absolute_sync_collections ORDER BY namespace, collection_key'
@@ -215,7 +243,7 @@ export const createCapacitorSyncLocalStore = ({
 					const migrated = migrateSyncLocalCollectionRecord(
 						record,
 						{ key, namespace },
-						resolved.steps
+						steps
 					);
 					if (migrated === null)
 						await database.run(
@@ -257,7 +285,7 @@ export const createCapacitorSyncLocalStore = ({
 					const migrated = migrateSyncLocalMutationRecord(
 						record,
 						{ key: operationId, namespace },
-						resolved.steps
+						steps
 					);
 					if (migrated === null)
 						await database.run(
@@ -278,18 +306,27 @@ export const createCapacitorSyncLocalStore = ({
 						);
 				}
 			}
-			await database.run(
-				'INSERT INTO absolute_sync_schema (singleton_id, logical_version) VALUES (1, ?) ON CONFLICT(singleton_id) DO UPDATE SET logical_version = excluded.logical_version',
-				[resolved.targetVersion],
-				false
+			for (const component of resolved.components)
+				await database.run(
+					'INSERT INTO absolute_sync_schema_components (component_id, logical_version) VALUES (?, ?) ON CONFLICT(component_id) DO UPDATE SET logical_version = excluded.logical_version',
+					[component.id, component.targetVersion],
+					false
+				);
+			const app = resolved.components.find(
+				(component) => component.id === '@absolutejs/app'
 			);
+			if (app !== undefined)
+				await database.run(
+					'INSERT INTO absolute_sync_schema (singleton_id, logical_version) VALUES (1, ?) ON CONFLICT(singleton_id) DO UPDATE SET logical_version = excluded.logical_version',
+					[app.targetVersion],
+					false
+				);
 			await database.commitTransaction();
-			schemaStatus = {
-				minimumCompatibleVersion: resolved.minimumCompatibleVersion,
-				state: 'ready',
-				storedVersion: resolved.targetVersion,
-				targetVersion: resolved.targetVersion
-			};
+			schemaStatus = createSyncLocalSchemaStatus(
+				resolved.components,
+				resolved.orphanedComponents,
+				'components' in storageSchema
+			);
 		} catch (error) {
 			try {
 				await database.rollbackTransaction();

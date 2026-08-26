@@ -142,3 +142,73 @@ test('Capacitor SQLite rolls back records and version after a migration crash', 
 		undefined
 	]);
 });
+
+test('Capacitor SQLite composes JSON pack schemas and retains orphan ledgers', async () => {
+	const connection = createFakeSqliteConnection();
+	const legacy = createCapacitorSyncLocalStore({
+		connection: () => connection
+	});
+	await legacy.transaction('account-a', 'readwrite', async (tx) => {
+		await tx.putCollection('tasks', {
+			collection: 'tasks',
+			rows: [{ id: 1, title: 'ship it' }],
+			version: 1
+		});
+	});
+
+	const storageSchema = JSON.parse(
+		JSON.stringify({
+			components: [
+				{ id: '@absolutejs/app', version: 1 },
+				{
+					id: '@absolutejs/tasks-pack',
+					version: 2,
+					migrations: [
+						{
+							toVersion: 2,
+							operations: [
+								{
+									collection: 'tasks',
+									field: 'completed',
+									type: 'set-default',
+									value: false
+								}
+							]
+						}
+					]
+				},
+				{ id: '@absolutejs/labels-pack', version: 1 }
+			]
+		})
+	);
+	const upgraded = createCapacitorSyncLocalStore({
+		connection: () => connection,
+		storageSchema
+	});
+	await expect(upgraded.getSchemaStatus?.()).resolves.toMatchObject({
+		components: [
+			{ id: '@absolutejs/app', storedVersion: 1 },
+			{ id: '@absolutejs/labels-pack', storedVersion: 1 },
+			{ id: '@absolutejs/tasks-pack', storedVersion: 2 }
+		]
+	});
+	const tasks = await upgraded.transaction('account-a', 'readonly', (tx) =>
+		tx.getCollection('tasks')
+	);
+	expect(tasks?.rows).toEqual([
+		{ completed: false, id: 1, title: 'ship it' }
+	]);
+
+	const withoutTasks = createCapacitorSyncLocalStore({
+		connection: () => connection,
+		storageSchema: {
+			components: [{ id: '@absolutejs/app', version: 1 }]
+		}
+	});
+	await expect(withoutTasks.getSchemaStatus?.()).resolves.toMatchObject({
+		orphanedComponents: [
+			'@absolutejs/labels-pack',
+			'@absolutejs/tasks-pack'
+		]
+	});
+});
