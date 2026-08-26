@@ -41,6 +41,14 @@ failures obey the client's delivery ceiling; conflicts and permanent failures
 remain in the principal's dead-letter partition for explicit remediation rather
 than replaying forever.
 
+Generated mutation conflict policies are captured inside each encrypted outbox
+record. The TypeScript foreground/headless runner and the Android WorkManager or
+iOS BGProcessingTask runner therefore make the same bounded decision: manual
+conflicts become dead letters, `server-wins` discards the rejected local intent,
+and `client-wins` retries the unchanged operation ID up to its declared ceiling.
+An explicit argument-changing rebase is left to the foreground remediation API
+and creates a new traceable intent.
+
 The namespace must come from a verified Auth principal, never from an untrusted
 route or form value. AbsoluteJS derives an opaque namespace from the verified
 issuer, public client ID, and subject. Signing out locks that partition by

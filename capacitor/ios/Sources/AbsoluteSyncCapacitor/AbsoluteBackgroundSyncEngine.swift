@@ -97,6 +97,12 @@ enum AbsoluteBackgroundSyncEngine {
                 if mutationResults[sent.id]?["status"] as? String == "ack" { try execute(db, "DELETE FROM absolute_sync_mutations WHERE namespace=? AND operation_id=?", [config.namespace, sent.id]); acknowledged += 1; continue }
                 let rejection = mutationResults[sent.id]?["rejection"] as? [String: Any] ?? ["kind": "retryable", "message": "Missing mutation response."]
                 current["lastError"] = rejection["message"]; current["rejection"] = rejection
+                let conflictPolicy = current["conflictPolicy"] as? [String: Any]
+                let conflictStrategy = conflictPolicy?["strategy"] as? String ?? "manual"
+                if rejection["kind"] as? String == "conflict" && conflictStrategy == "server-wins" { try execute(db, "DELETE FROM absolute_sync_mutations WHERE namespace=? AND operation_id=?", [config.namespace, sent.id]); continue }
+                let conflictAttempts = (current["conflictAttempts"] as? NSNumber)?.intValue ?? 0
+                let maxConflictAttempts = (conflictPolicy?["maxAttempts"] as? NSNumber)?.intValue ?? 1
+                if rejection["kind"] as? String == "conflict" && conflictStrategy == "client-wins" && conflictAttempts < maxConflictAttempts { current["conflictAttempts"] = conflictAttempts + 1; current["state"] = "pending"; current.removeValue(forKey: "nextAttemptAt"); try updateRecord(db, "absolute_sync_mutations", "operation_id", "mutation", config.namespace, sent.id, current); continue }
                 if rejection["kind"] as? String != "retryable" || sent.attempts >= config.maxAttempts { current["state"] = "dead-letter"; current["deadLetteredAt"] = Date().timeIntervalSince1970 * 1000; current.removeValue(forKey: "nextAttemptAt") }
                 else { let hint = (rejection["retryAfterMs"] as? NSNumber)?.doubleValue ?? min(30_000, 500 * pow(2, Double(max(0, sent.attempts - 1)))); current["state"] = "pending"; current["nextAttemptAt"] = Date().timeIntervalSince1970 * 1000 + max(0, hint) }
                 try updateRecord(db, "absolute_sync_mutations", "operation_id", "mutation", config.namespace, sent.id, current)

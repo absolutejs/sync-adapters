@@ -58,5 +58,9 @@ test('native workers fail closed to the issuer origin and use the secure vault',
 		expect(source).toContain('aes-256-gcm-v1');
 		expect(source).toContain('absolute-sync-v1');
 		expect(source).toContain('Protected Sync data key is unavailable.');
+		expect(source).toContain('conflictPolicy');
+		expect(source).toContain('client-wins');
+		expect(source).toContain('server-wins');
+		expect(source).toContain('conflictAttempts');
 	}
 });

@@ -18,6 +18,53 @@ test('Capacitor SQLite passes the shared SyncLocalStore contract', async () => {
 	).resolves.toBeUndefined();
 });
 
+test('Capacitor SQLite captures generated conflict policy in the native outbox', async () => {
+	const connection = createFakeSqliteConnection();
+	const store = createCapacitorSyncLocalStore({
+		connection: () => connection,
+		storageSchema: {
+			components: [
+				{
+					id: '@absolutejs/app',
+					localData: {
+						mutations: [
+							{
+								conflict: {
+									maxAttempts: 2,
+									strategy: 'client-wins'
+								},
+								match: 'tasks:*'
+							}
+						]
+					},
+					version: 1
+				}
+			]
+		}
+	});
+	await store.transaction('account-a', 'readwrite', async (tx) => {
+		const conflictPolicy =
+			tx.resolveMutationPolicy?.('tasks:update').conflict;
+		await tx.putMutation({
+			args: { id: 1 },
+			attempts: 0,
+			createdAt: 1,
+			...(conflictPolicy ? { conflictPolicy } : {}),
+			inverse: [],
+			name: 'tasks:update',
+			operationId: 'install:intent',
+			optimistic: []
+		});
+	});
+	await expect(
+		store.transaction('account-a', 'readonly', (tx) =>
+			tx.getMutation('install:intent')
+		)
+	).resolves.toMatchObject({
+		conflictPolicy: { maxAttempts: 2, strategy: 'client-wins' }
+	});
+});
+
 test('Capacitor SQLite encrypts records with a vault-held key', async () => {
 	const connection = createFakeSqliteConnection();
 	const values = new Map<string, string>();
