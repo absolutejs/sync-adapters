@@ -44,6 +44,42 @@ issuer, public client ID, and subject. Signing out locks that partition by
 removing it from the active runtime; it does not silently destroy offline data.
 Signing back in as the same verified principal unlocks the same partition.
 
+## Installed-data upgrades
+
+`storageSchema` accepts the same generated `SyncLocalStoreSchema` used by
+`createIndexedDbSyncLocalStore`. Before any foreground transaction begins, the
+adapter migrates every principal's collections, durable mutations, and logical
+schema marker inside one SQLite transaction. A transform failure or process
+death rolls back the entire upgrade; a runtime older than the stored schema
+fails closed.
+
+Migration callbacks are synchronous and deterministic. They may replace or
+delete persisted records, but cannot change a mutation's stable operation ID.
+AbsoluteJS will generate and provision the plan for ordinary applications;
+direct Capacitor integrations can pass it explicitly:
+
+```ts
+const store = createCapacitorSyncLocalStore({
+	storageSchema: {
+		version: 2,
+		migrations: [
+			{
+				toVersion: 2,
+				migrateCollection(record) {
+					return {
+						...record,
+						rows: record.rows.map((row) => ({
+							...(row as object),
+							archived: false
+						}))
+					};
+				}
+			}
+		]
+	}
+});
+```
+
 ## Managed native background Sync
 
 AbsoluteJS also configures `AbsoluteBackgroundSync` when the application uses

@@ -8,7 +8,14 @@ import type {
 	LocalMutationRecord,
 	SyncLocalStore,
 	SyncLocalStoreMode,
+	SyncLocalStoreSchema,
+	SyncLocalStoreSchemaStatus,
 	SyncLocalTransaction
+} from '@absolutejs/sync/client';
+import {
+	migrateSyncLocalCollectionRecord,
+	migrateSyncLocalMutationRecord,
+	resolveSyncLocalMigrations
 } from '@absolutejs/sync/client';
 import type {
 	DeviceLifecycleCapability,
@@ -75,9 +82,15 @@ export type CapacitorSyncLocalStoreOptions = {
 	databaseName?: string;
 	/** Injection seam for tests and custom SQLCipher provisioning. */
 	connection?: CapacitorSyncSqliteFactory;
+	/** Same generated logical migration plan used by web IndexedDB. */
+	storageSchema?: SyncLocalStoreSchema;
 };
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS absolute_sync_schema (
+  singleton_id INTEGER PRIMARY KEY NOT NULL CHECK (singleton_id = 1),
+  logical_version INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS absolute_sync_metadata (
   namespace TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL
@@ -154,15 +167,148 @@ const requireNamespace = (namespace: string) => {
  */
 export const createCapacitorSyncLocalStore = ({
 	databaseName = 'absolutejs-sync-local-v1',
-	connection: createConnection = () => defaultConnection(databaseName)
+	connection: createConnection = () => defaultConnection(databaseName),
+	storageSchema = { version: 1 }
 }: CapacitorSyncLocalStoreOptions = {}): SyncLocalStore => {
 	if (databaseName.length === 0)
 		throw new TypeError('Capacitor Sync databaseName cannot be empty.');
+	let schemaStatus: SyncLocalStoreSchemaStatus | undefined;
+	const prepareSchema = async (
+		database: CapacitorSyncSqliteConnection
+	): Promise<void> => {
+		await database.beginTransaction();
+		try {
+			const saved = (
+				await database.query(
+					'SELECT logical_version FROM absolute_sync_schema WHERE singleton_id = 1 LIMIT 1'
+				)
+			).values?.[0]?.logical_version;
+			const storedVersion = typeof saved === 'number' ? saved : 1;
+			const resolved = resolveSyncLocalMigrations(
+				storedVersion,
+				storageSchema
+			);
+			if (resolved.steps.length > 0) {
+				const collections = (
+					await database.query(
+						'SELECT namespace, collection_key, record_json FROM absolute_sync_collections ORDER BY namespace, collection_key'
+					)
+				).values;
+				for (const row of collections ?? []) {
+					const namespace = row.namespace;
+					const key = row.collection_key;
+					if (
+						typeof namespace !== 'string' ||
+						typeof key !== 'string'
+					)
+						throw new Error(
+							'Capacitor Sync SQLite returned an invalid collection identity.'
+						);
+					const record = parseRecord<LocalCollectionRecord>(
+						row.record_json,
+						'collection'
+					);
+					if (record === undefined)
+						throw new Error(
+							'Capacitor Sync SQLite returned a missing collection record.'
+						);
+					const migrated = migrateSyncLocalCollectionRecord(
+						record,
+						{ key, namespace },
+						resolved.steps
+					);
+					if (migrated === null)
+						await database.run(
+							'DELETE FROM absolute_sync_collections WHERE namespace = ? AND collection_key = ?',
+							[namespace, key],
+							false
+						);
+					else
+						await database.run(
+							'UPDATE absolute_sync_collections SET record_json = ? WHERE namespace = ? AND collection_key = ?',
+							[JSON.stringify(migrated), namespace, key],
+							false
+						);
+				}
+
+				const mutations = (
+					await database.query(
+						'SELECT namespace, operation_id, record_json FROM absolute_sync_mutations ORDER BY namespace, operation_id'
+					)
+				).values;
+				for (const row of mutations ?? []) {
+					const namespace = row.namespace;
+					const operationId = row.operation_id;
+					if (
+						typeof namespace !== 'string' ||
+						typeof operationId !== 'string'
+					)
+						throw new Error(
+							'Capacitor Sync SQLite returned an invalid mutation identity.'
+						);
+					const record = parseRecord<LocalMutationRecord>(
+						row.record_json,
+						'mutation'
+					);
+					if (record === undefined)
+						throw new Error(
+							'Capacitor Sync SQLite returned a missing mutation record.'
+						);
+					const migrated = migrateSyncLocalMutationRecord(
+						record,
+						{ key: operationId, namespace },
+						resolved.steps
+					);
+					if (migrated === null)
+						await database.run(
+							'DELETE FROM absolute_sync_mutations WHERE namespace = ? AND operation_id = ?',
+							[namespace, operationId],
+							false
+						);
+					else
+						await database.run(
+							'UPDATE absolute_sync_mutations SET created_at = ?, record_json = ? WHERE namespace = ? AND operation_id = ?',
+							[
+								migrated.createdAt,
+								JSON.stringify(migrated),
+								namespace,
+								operationId
+							],
+							false
+						);
+				}
+			}
+			await database.run(
+				'INSERT INTO absolute_sync_schema (singleton_id, logical_version) VALUES (1, ?) ON CONFLICT(singleton_id) DO UPDATE SET logical_version = excluded.logical_version',
+				[resolved.targetVersion],
+				false
+			);
+			await database.commitTransaction();
+			schemaStatus = {
+				minimumCompatibleVersion: resolved.minimumCompatibleVersion,
+				state: 'ready',
+				storedVersion: resolved.targetVersion,
+				targetVersion: resolved.targetVersion
+			};
+		} catch (error) {
+			try {
+				await database.rollbackTransaction();
+			} catch (rollbackError) {
+				throw new AggregateError(
+					[error, rollbackError],
+					'Capacitor Sync SQLite migration and rollback both failed'
+				);
+			}
+			throw error;
+		}
+	};
+
 	let connectionPromise: Promise<CapacitorSyncSqliteConnection> | undefined;
 	const connection = () => {
 		connectionPromise ??= Promise.resolve(createConnection()).then(
 			async (database) => {
 				await database.execute(SCHEMA);
+				await prepareSchema(database);
 				return database;
 			}
 		);
@@ -345,6 +491,12 @@ export const createCapacitorSyncLocalStore = ({
 
 	return {
 		transaction,
+		getSchemaStatus: async () => {
+			await connection();
+			if (schemaStatus === undefined)
+				throw new Error('Capacitor Sync schema was not prepared.');
+			return { ...schemaStatus };
+		},
 		deleteNamespace: async (namespace) => {
 			requireNamespace(namespace);
 			await locked(async () => {
