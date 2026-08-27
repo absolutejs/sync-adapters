@@ -18,6 +18,27 @@ test('Capacitor SQLite passes the shared SyncLocalStore contract', async () => {
 	).resolves.toBeUndefined();
 });
 
+test('Capacitor SQLite initializes a fresh database with one statement per native call', async () => {
+	const connection = createFakeSqliteConnection();
+	const execute = connection.execute.bind(connection);
+	let statements = 0;
+	connection.execute = async (statement) => {
+		expect(statement.match(/\bCREATE\b/gu)).toHaveLength(1);
+		statements += 1;
+
+		return execute(statement);
+	};
+	const store = createCapacitorSyncLocalStore({
+		connection: () => connection
+	});
+	await expect(store.getSchemaStatus?.()).resolves.toMatchObject({
+		state: 'ready',
+		storedVersion: 1,
+		targetVersion: 1
+	});
+	expect(statements).toBe(6);
+});
+
 test('Capacitor SQLite captures generated conflict policy in the native outbox', async () => {
 	const connection = createFakeSqliteConnection();
 	const store = createCapacitorSyncLocalStore({

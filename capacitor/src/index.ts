@@ -176,35 +176,35 @@ export type CapacitorSyncLocalStoreOptions = {
 	now?: () => number;
 };
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS absolute_sync_schema (
+const SCHEMA = [
+	`CREATE TABLE IF NOT EXISTS absolute_sync_schema (
   singleton_id INTEGER PRIMARY KEY NOT NULL CHECK (singleton_id = 1),
   logical_version INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS absolute_sync_schema_components (
+)`,
+	`CREATE TABLE IF NOT EXISTS absolute_sync_schema_components (
   component_id TEXT PRIMARY KEY NOT NULL,
   logical_version INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS absolute_sync_metadata (
+)`,
+	`CREATE TABLE IF NOT EXISTS absolute_sync_metadata (
   namespace TEXT PRIMARY KEY NOT NULL,
   installation_id TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS absolute_sync_collections (
+)`,
+	`CREATE TABLE IF NOT EXISTS absolute_sync_collections (
   namespace TEXT NOT NULL,
   collection_key TEXT NOT NULL,
   record_json TEXT NOT NULL,
   PRIMARY KEY (namespace, collection_key)
-);
-CREATE TABLE IF NOT EXISTS absolute_sync_mutations (
+)`,
+	`CREATE TABLE IF NOT EXISTS absolute_sync_mutations (
   namespace TEXT NOT NULL,
   operation_id TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   record_json TEXT NOT NULL,
   PRIMARY KEY (namespace, operation_id)
-);
-CREATE INDEX IF NOT EXISTS absolute_sync_mutations_order
-  ON absolute_sync_mutations (namespace, created_at, operation_id);
-`;
+)`,
+	`CREATE INDEX IF NOT EXISTS absolute_sync_mutations_order
+  ON absolute_sync_mutations (namespace, created_at, operation_id)`
+] as const;
 
 type SqliteRow = Record<string, unknown>;
 
@@ -516,7 +516,7 @@ export const createCapacitorSyncLocalStore = ({
 			Promise.resolve(createConnection()),
 			prepareProtector()
 		]).then(async ([database, protector]) => {
-			await database.execute(SCHEMA);
+			for (const statement of SCHEMA) await database.execute(statement);
 			await prepareSchema(database, protector);
 			return database;
 		});
