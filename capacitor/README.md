@@ -7,6 +7,12 @@ It also exposes namespace-scoped collection discovery so finite native workers
 can resume safe `id`-keyed pulls without application-authored worker code.
 
 AbsoluteJS provisions this automatically when Mobile, Sync, and Auth are enabled.
+Version 0.9.3 adds peer support tested against `@absolutejs/devices@0.7.0`
+and `@absolutejs/devices-capacitor@0.8.0`, while retaining the earlier declared
+peer ranges. Intermediate Devices release lines are not newly certified by this
+change. Keep the application and this adapter on one compatible Devices pair;
+do not use package-manager overrides to hide an incompatible peer range.
+
 Direct Capacitor applications can opt in explicitly:
 
 ```ts
