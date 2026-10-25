@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-capacitor",
-	"version": "0.9.4",
+	"version": "0.9.5",
 	"description": "Transactional Capacitor SQLite local store and native lifecycle adapter for @absolutejs/sync",
 	"repository": {
 		"type": "git",

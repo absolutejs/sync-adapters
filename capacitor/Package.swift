@@ -4,7 +4,13 @@ import PackageDescription
 let package = Package(
     name: "AbsoluteSyncCapacitor",
     platforms: [.iOS(.v15)],
-    products: [.library(name: "AbsoluteSyncCapacitor", targets: ["AbsoluteSyncCapacitor"])],
+    products: [
+        .library(name: "AbsoluteSyncCapacitor", targets: ["AbsoluteSyncCapacitor"]),
+        // Capacitor 8's generated CapApp-SPM names a plugin's product from
+        // its npm scope and name, so it asks for AbsolutejsSyncCapacitor.
+        // The same target under that name, beside the original.
+        .library(name: "AbsolutejsSyncCapacitor", targets: ["AbsoluteSyncCapacitor"])
+    ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
         // Both plugins are direct app dependencies. Resolving the sibling npm
