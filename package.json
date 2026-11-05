@@ -10,7 +10,8 @@
 		"capacitor",
 		"loro",
 		"redis",
-		"yjs"
+		"yjs",
+		"pubsub"
 	],
 	"scripts": {
 		"build": "bun run --filter './*' build",
